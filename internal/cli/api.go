@@ -15,7 +15,6 @@ func newAPIClient(ctx context.Context, a *App, g *globalFlags) (play.API, error)
 
 	return a.NewAPI(ctx, play.Options{
 		CredentialsFile: g.Credentials,
-		Endpoint:        g.Endpoint,
 		UserAgent:       "google-play-publisher/" + a.Version.Version,
 		Logger:          a.Logger,
 		Debug:           g.Debug,

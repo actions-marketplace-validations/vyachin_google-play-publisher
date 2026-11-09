@@ -30,7 +30,6 @@ or after the command name: `google-play-publisher --debug publish ...` is equiva
 | `--json` | bool | `false` | Machine-readable result on `stdout`; logs remain text on `stderr` |
 | `--timeout` | duration | `20m` | Overall operation deadline |
 | `--credentials` | path | ADC | Path to the JSON key; takes precedence over ADC |
-| `--endpoint` | url | prod | For `httptest`-based tests |
 
 ## 2. Commands
 
@@ -93,8 +92,7 @@ manifest, resource-referenced values and a non-zero `android:versionCodeMajor` w
 code 2 before authentication. `--package` and `--version-code`, when supplied, are assertions
 against those values.
 
-The remaining flags (`--debug`, `--json`, `--timeout`, `--credentials`, `--endpoint`) are
-global, see §1.
+The remaining flags (`--debug`, `--json`, `--timeout`, `--credentials`) are global, see §1.
 
 Combination validation (exit code 2 on violation):
 

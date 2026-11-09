@@ -21,7 +21,6 @@ type globalFlags struct {
 	JSON        bool
 	Timeout     time.Duration
 	Credentials string
-	Endpoint    string
 }
 
 // Execute runs the command tree and returns a process exit code.
@@ -111,7 +110,6 @@ func newRootCmd(app *App) (*cobra.Command, *globalFlags) {
 	flags.BoolVar(&g.JSON, "json", false, "print machine-readable JSON result")
 	flags.DurationVar(&g.Timeout, "timeout", 20*time.Minute, "overall operation timeout")
 	flags.StringVar(&g.Credentials, "credentials", "", "path to service account JSON key (default: ADC)")
-	flags.StringVar(&g.Endpoint, "endpoint", "", "override API endpoint (testing)")
 
 	root.AddGroup(
 		&cobra.Group{ID: "release", Title: "Release commands:"},

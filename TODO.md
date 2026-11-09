@@ -1,9 +1,9 @@
 # TODO — development plan for `google-play-publisher`
 
 **Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
-S14 (metadata pull), S15 (single metadata flag) and S16 (text-only logs) are done; S0 (Play
-Console access) was deferred by agreement, and the former S9 post-MVP list was dropped as out
-of scope. The
+S14 (metadata pull), S15 (single metadata flag), S16 (text-only logs) and S17 (no CLI
+endpoint override) are done; S0 (Play Console access) was deferred by agreement, and the
+former S9 post-MVP list was dropped as out of scope. The
 post-S10 review (R16–R19, I7–I9) is fixed and released, including the removal of
 `--expected-tag` in S11.8; S11.9 fixes the publish action invocation and supersedes v0.0.6.
 The Gunclub workflow switch is done in that repository, and the live publish/upload runs
@@ -44,6 +44,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S14 | `pull`: recreate the metadata tree from Play | 1–1.5 d | A pulled tree round-trips through `publish --metadata-dir` |
 | S15 | Consolidate metadata flags on `--metadata-dir` | 0.5 d | One metadata flag; `promote` applies the full tree |
 | S16 | Remove JSON log format | 0.25 d | One JSON flag: `--json` for the result only |
+| S17 | Remove the CLI endpoint override | 0.25 d | Production flags cannot redirect the Play client |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -1364,3 +1365,16 @@ logs on `stderr` stay human-readable text.
 - [x] Documentation: CLI contract, architecture, stack, ADR-0003, README and CHANGELOG.
 
 **DoD:** one JSON flag remains (`--json`); `stderr` logs are text; the local gate is green.
+
+## S17. Remove the CLI endpoint override — 0.25 d — done [unplanned]
+
+**Goal:** keep the endpoint override inside the Play adapter for `httptest`-based tests and
+remove it from the user-facing CLI, where it can redirect an authenticated client.
+
+- [x] Remove `--endpoint` from the global flags, `globalFlags.Endpoint` and `newAPIClient`;
+      `play.Options.Endpoint` remains the internal test hook.
+- [x] Documentation: CLI contract, stack, ADR-0003 and CHANGELOG.
+- [x] Tests: all CLI tests use injected Play clients; no CLI flag test was needed.
+
+**DoD:** the CLI exposes only `--debug`, `--json`, `--timeout` and `--credentials` as global
+flags; `play.Options.Endpoint` still serves the adapter tests; the local gate is green.

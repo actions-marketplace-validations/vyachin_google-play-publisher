@@ -54,6 +54,9 @@
   assertions, and `artifact.ReadMetadata` was deleted.
 - `--log-format` was removed. Logs are always text on `stderr`; `--json` affects only the
   result on `stdout`. This leaves one JSON-related flag instead of two.
+- `--endpoint` was removed from the CLI. It was a test hook that could redirect an
+  authenticated client, and therefore its OAuth token, to an arbitrary host. `play.Options`
+  keeps the endpoint override for `httptest`-based tests.
 
 ### Fixed
 
