@@ -30,13 +30,13 @@ jobs:
         id: setup
         uses: ./setup
         with:
-          version: 0.0.5
+          version: 0.0.6
 
       - name: Check the installed version
         run: |
           google-play-publisher --json version > version.json
-          jq -e '.version == "0.0.5"' version.json
-          test "${{ steps.setup.outputs.version }}" = "0.0.5"
+          jq -e '.version == "0.0.6"' version.json
+          test "${{ steps.setup.outputs.version }}" = "0.0.6"
           test -n "${{ steps.setup.outputs.path }}"
 
   publish-stub:
@@ -68,7 +68,7 @@ jobs:
         env:
           GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
         with:
-          version: 0.0.5
+          version: 0.0.6
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
@@ -108,7 +108,7 @@ jobs:
         env:
           GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
         with:
-          version: 0.0.5
+          version: 0.0.6
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
