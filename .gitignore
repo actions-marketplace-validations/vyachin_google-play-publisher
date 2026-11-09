@@ -5,3 +5,7 @@
 .DS_Store
 .idea/
 .vscode/
+
+# Service account keys
+service_account*.json
+service-account*.json
