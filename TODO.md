@@ -1,6 +1,6 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.1 implemented. Stages S1–S8 are done; S0 (Play Console access) was deferred
+**Status:** v0.0.2 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
 by agreement; S9 is post-MVP.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
@@ -398,12 +398,16 @@ mismatch, the removed flag (unknown flag, code 2) and publishing without notes.
   `make fmt`, `make lint`, `make test`, `make test-race`.
   Acceptance: all four pass; `make cover` reports at least 80% total, matching the CI gate.
 
-- [ ] **M4 — P1: Publish v0.0.2.**
+- [x] **M4 — P1: Publish v0.0.2.**
   Commit, tag, run goreleaser through the existing release workflow.
   Acceptance: the GitHub release for `v0.0.2` contains
   `google-play-publisher_0.0.2_linux_amd64.tar.gz` and `checksums.txt`, and the checksum in
   that file matches `sha256sum` of the downloaded archive. Release notes name the breaking
   change: `--release-notes` is removed, notes now come from `--changelog-dir`.
+  Evidence: [release v0.0.2](https://github.com/vyachin/google-play-publisher/releases/tag/v0.0.2),
+  release workflow run 42585932356; `checksums.txt` matches the downloaded
+  `google-play-publisher_0.0.2_linux_amd64.tar.gz`
+  (`9b7f64a6ea6e0de277c98b544475d6c0ae8cf6adc77a1643daefc0169542552b`).
 
 **DoD:** v0.0.2 is published with `--changelog-dir`, `--version-code` and `--release-name`;
 Gunclub's `android.yml` can install the binary and publish with
