@@ -65,7 +65,7 @@ google-play-publisher publish --package com.example.app \
 | `--status` | enum | `completed` | `completed` \| `draft` \| `inProgress` (`inProgress` requires `--rollout`) |
 | `--rollout` | float | `0` | User fraction, `0 < f < 1`; implies `inProgress` when `--status` is omitted |
 | `--changelog-dir` | path | — | Play-style metadata directory: reads `<DIR>/<locale>/changelogs/<versionCode>.txt` |
-| `--version-code` | int | — | `versionCode` used to find changelog files and to verify the upload; required with `--changelog-dir` |
+| `--version-code` | int | — | `versionCode` used to find changelog files and to verify the upload; required with `--changelog-dir`; must match `--metadata` when both are supplied |
 | `--release-name` | string | — | Release name stored in Play; empty keeps the current behavior (no name) |
 | `--changes-not-sent-for-review` | bool | `false` | Save changes without submitting them for review |
 | `--on-in-review` | enum | `error` | `error` → `ERROR_IF_IN_REVIEW`; `replace` → `CANCEL_IN_REVIEW_AND_SUBMIT` |
@@ -77,7 +77,9 @@ Release notes come only from `--changelog-dir`. A locale without
 `<versionCode>.txt` is skipped, so a partial translation is allowed; when no locale has
 a file, the command fails with exit code 2 and the paths that were checked before any
 edit is created. `--version-code` without `--changelog-dir` is allowed and only verifies
-the `versionCode` returned by `bundles.upload`.
+the `versionCode` returned by `bundles.upload`. When `--metadata` is also supplied, its
+`versionCode` must equal `--version-code`; a mismatch is a local input error (exit code 2)
+and is rejected before the API client is created, even with `--if-exists=skip`.
 
 `--metadata` is optional. AGP does not write `build/outputs/bundle/<variant>/output-metadata.json`
 for `bundleRelease` (the file stays under `build/intermediates/bundle_ide_model/...`), so
@@ -93,6 +95,7 @@ Combination validation (exit code 2 on violation):
 - `--status=inProgress` without `--rollout` → error;
 - `--rollout` outside `(0,1)`, including `NaN` and infinities → error;
 - `--changelog-dir` without `--version-code` → error;
+- `--metadata` version code different from `--version-code` → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error.
 
 `--dry-run` is not "do nothing": the AAB is actually uploaded, the edit is validated and then

@@ -66,7 +66,8 @@ google-play-publisher publish -p com.example.app -f app-release.aab \
 ```
 
 `--version-code` is required with `--changelog-dir`: it selects the changelog files and is
-checked against the `versionCode` returned by the upload. Locales without a file for that
+checked against the `versionCode` returned by the upload. When `--metadata` is passed too, its
+`versionCode` must match; a contradiction fails with exit code 2 before any network call. Locales without a file for that
 version code are skipped; when no file exists at all, the command fails with exit code 2 and
 the path it checked. `--release-name` is optional, but the release name is what Play Console
 shows next to the version code.

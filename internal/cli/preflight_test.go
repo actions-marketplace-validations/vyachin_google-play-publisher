@@ -40,6 +40,10 @@ func TestPublishLocalValidationBeforeClient(t *testing.T) {
 		{"metadata mismatch", []string{
 			"publish", "-p", "com.example.other", "-f", aab, "--metadata", writeMetadata(t, 42),
 		}},
+		{"metadata version conflict", []string{
+			"publish", "-p", "com.example.app", "-f", aab,
+			"--metadata", writeMetadata(t, 41), "--version-code", "42", "--if-exists", "skip",
+		}},
 		{"too long changelog", []string{
 			"publish", "-p", "com.example.app", "-f", aab,
 			"--changelog-dir", changelogDir, "--version-code", "42",

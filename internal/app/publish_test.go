@@ -514,6 +514,38 @@ func TestPublishMetadataVersionMismatch(t *testing.T) {
 	}
 }
 
+func TestPrepareRejectsConflictingVersionCodes(t *testing.T) {
+	aab := writeAAB(t)
+
+	tests := []struct {
+		name        string
+		metaCode    int64
+		versionCode int64
+		wantCode    exitcode.Code
+	}{
+		{"conflict", 41, 42, exitcode.Usage},
+		{"matching", 41, 41, exitcode.OK},
+		{"only metadata", 41, 0, exitcode.OK},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			opts := baseOptions(aab)
+			opts.MetadataPath = writeMetadata(t, test.metaCode)
+			opts.VersionCode = test.versionCode
+
+			_, err := app.Prepare(opts)
+			if got := exitcode.From(err); got != test.wantCode {
+				t.Fatalf("code = %d, want %d (err: %v)", got, test.wantCode, err)
+			}
+			if test.wantCode == exitcode.Usage &&
+				!strings.Contains(err.Error(), "metadata versionCode 41 does not match --version-code 42") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 func TestPublishUploadedHashMismatch(t *testing.T) {
 	fake := &playtest.Fake{
 		UploadBundleFunc: func(context.Context, string, string, io.Reader, int64) (play.BundleInfo, error) {

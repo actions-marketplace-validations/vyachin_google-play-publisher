@@ -176,7 +176,9 @@ reused for a new release.
 Republishing the same AAB after a **successful** commit is not attempted: it is a separate
 release with the same version code, which Play rejects. If `versionCode` is known from
 `--metadata` or `--version-code` the tool detects this before uploading and applies
-`--if-exists`; otherwise Play rejects the upload and the tool exits with code 5.
+`--if-exists`; when both are supplied they must agree, otherwise the run stops with code 2
+before any API call. Without a known version code Play rejects the upload and the tool exits
+with code 5.
 
 ## 7. Timeouts and cancellation
 

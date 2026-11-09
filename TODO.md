@@ -455,7 +455,7 @@ and update the matching behavior/error document under `docs/`.
   Acceptance: a blocked fake token endpoint/provider is interrupted by both the
   operation deadline and cancellation, including refresh; no real credentials required.
 
-- [ ] **R13 — P2: Reject conflicting explicit and metadata version codes before networking.**
+- [x] **R13 — P2: Reject conflicting explicit and metadata version codes before networking.**
   Location: [internal/app/publish.go](internal/app/publish.go), `Prepare`,
   `knownVersionCode`, and the existing-version branch in `PublishPrepared`.
   `Prepare` validates the metadata package but does not compare its version with

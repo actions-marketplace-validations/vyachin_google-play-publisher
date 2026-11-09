@@ -346,6 +346,13 @@ func readMetadata(opts PublishOptions) (*artifact.Metadata, error) {
 	if err := meta.VerifyPackage(opts.Package); err != nil {
 		return nil, err
 	}
+	// Both values describe the same artifact, so a contradiction is a local
+	// input error. Reject it before an edit is created or a token is fetched.
+	if opts.VersionCode > 0 && meta.VersionCode != opts.VersionCode {
+		return nil, exitcode.Errorf(exitcode.Usage,
+			"metadata versionCode %d does not match --version-code %d",
+			meta.VersionCode, opts.VersionCode)
+	}
 	return &meta, nil
 }
 

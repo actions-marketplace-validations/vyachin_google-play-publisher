@@ -8,6 +8,8 @@
   action on `stderr` while keeping exactly one success object on `stdout`.
 - Connection-refused and unreachable-host/network failures are classified as transient (6)
   and retried instead of being reported as internal (1).
+- A `versionCode` conflict between `--metadata` and `--version-code` is rejected with exit
+  code 2 before the API client is created, including with `--if-exists=skip`.
 
 ## v0.0.2 — 2026-11-09
 
