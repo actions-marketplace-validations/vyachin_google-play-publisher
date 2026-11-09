@@ -1,7 +1,7 @@
 # TODO — development plan for `google-play-publisher`
 
 **Status:** v0.0.3 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
-by agreement; S9 is post-MVP.
+by agreement; S9 is post-MVP. S10 (GitHub Actions usability) is planned.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -29,7 +29,9 @@ debug mode, machine-readable output and an extensible command structure.
 | S7 | Quality and CI | 1–1.5 d | Green pipeline, integration run |
 | S8 | v0.1 release | 0.5–1 d | Binaries and instructions |
 | S8.1 | v0.0.2: Gunclub migration (notes from changelogs, release name) | 1–1.5 d | v0.0.2 published with `--changelog-dir` |
+| S8.2 | v0.0.3: follow-up review fixes (R11–R15, I5–I6) | — | v0.0.3 published with verified checksums |
 | S9 | After the MVP | 3–5 d | `rollout`/`promote` |
+| S10 | GitHub Actions installation, publishing, and AAB metadata | TBD after design | Tested actions and documented workflow examples |
 
 **Up to v0.1: 9–12 working days + 20% buffer.**
 
@@ -167,7 +169,7 @@ reproducible manually.
 - [ ] `promote`: `internal → beta`, confirmation for production.
 - [ ] `--config`: a file with multiple apps (koanf), if needed.
 - [ ] Multiple apps per run (`errgroup`), if needed.
-- [ ] AAB manifest parsing (protobuf) — only if pre-upload validation is required.
+- [ ] AAB manifest parsing (protobuf) — moved to S10.3 for CI metadata resolution.
 - [ ] Metrics/audit: JSON events, external collection.
 
 ## Risks and buffer
@@ -415,6 +417,26 @@ Gunclub's `android.yml` can install the binary and publish with
 **Gate:** do not commit Gunclub's workflow switch before this release exists; it calls the new
 flags.
 
+## S8.2. v0.0.3 — follow-up review fixes [unplanned]
+
+Delivers the R11–R15 and I5–I6 fixes from the follow-up review; the user-facing changes are
+listed in the v0.0.3 section of [CHANGELOG.md](CHANGELOG.md).
+
+- [x] **M5 — P1: Publish v0.0.3.**
+  Tag `v0.0.3` from `chore(release): prepare v0.0.3`; the release workflow builds and uploads the
+  archives.
+  Acceptance: the GitHub release for `v0.0.3` contains
+  `google-play-publisher_0.0.3_linux_amd64.tar.gz` and `checksums.txt`, and the checksum in that
+  file matches `sha256` of the downloaded archive.
+  Evidence: [release v0.0.3](https://github.com/vyachin/google-play-publisher/releases/tag/v0.0.3),
+  release workflow run 42593559185; `checksums.txt` matches the downloaded
+  `google-play-publisher_0.0.3_linux_amd64.tar.gz`
+  (`1547f2e0bddf8ce8d676d14dfd174d639bbb252d3970afc70b75b40e199ebc19`).
+
+**DoD:** v0.0.3 is published with the follow-up review fixes and the documented checksum
+verification.
+**Gate:** none; the next functional work is S9 or the remaining live verification (I3).
+
 ## Follow-up code review — 2026-11-09 [unplanned]
 
 Scope: current Go implementation, tests, documentation, and CI/release configuration,
@@ -509,3 +531,121 @@ and update the matching behavior/error document under `docs/`.
 **Status 2026-11-09:** R11–R15 and I5–I6 are fixed with regression tests; I3 (live
 verification) remains open until S0 access exists. The fixes are listed in the v0.0.3
 section of [CHANGELOG.md](CHANGELOG.md).
+
+## S10. GitHub Actions usability [unplanned] — not started
+
+**Goal:** replace repeated binary-installation and credentials scripts with official actions,
+then remove Gradle-source parsing by resolving release identity from the signed AAB.
+Build, signing, Android checks, artifact retention, and workflow concurrency remain explicit
+responsibilities of the consuming workflow.
+
+The interfaces below are proposals, not features available in v0.0.3. Implement S10.1–S10.2
+against the existing CLI first; S10.3–S10.4 extend it. S10.5 is required for both deliveries.
+This stage can proceed independently of the S9 rollout/promote work.
+
+### S10.1. Provide a setup action
+
+- [ ] Define the action contract and supported runners in a new GitHub Actions guide under
+      `docs/`, linked from `docs/README.md`. Start with Linux amd64/arm64; reject unsupported
+      platforms explicitly until they have test coverage.
+- [ ] Add `setup/action.yml`, usable as `vyachin/google-play-publisher/setup@<ref>`, with an
+      explicit CLI `version` input. Document action revision and CLI version separately.
+- [ ] Download the matching release archive and `checksums.txt`, verify the exact asset's
+      SHA-256 before extraction, install under the runner's temporary directory, and add the
+      binary directory to `GITHUB_PATH`. Fail clearly for missing releases/assets/checksums.
+- [ ] Test platform selection, version validation, checksum failure, download failure, paths
+      containing spaces, and successful installation without requiring Play credentials.
+
+**DoD:** a setup step replaces the current curl/checksum/tar script, and subsequent `run`
+steps can invoke the requested `google-play-publisher` version.
+
+### S10.2. Provide a publish action over the existing CLI
+
+- [ ] Add root `action.yml`, usable as `vyachin/google-play-publisher@<ref>`. Reuse the setup
+      implementation and delegate publication behavior to the CLI; do not duplicate Play API
+      calls or release validation in action scripts.
+- [ ] Define typed/validated inputs for CLI version, package, AAB path, track (default
+      `internal`), changelog directory, version code, release name, and existing-version policy
+      (default `fail`). Initially keep the current explicit version-code requirement for notes.
+- [ ] Support mutually exclusive `credentials-base64` and `credentials-file` inputs, plus
+      existing ADC when neither is supplied. Decode into a restricted temporary file and
+      arrange cleanup after success or failure; never delete a caller-owned file or print
+      credential contents. Keep CLI authentication unchanged.
+- [ ] Resolve relative user paths from `GITHUB_WORKSPACE`, including credentials-file paths;
+      document that `defaults.run.working-directory` does not set action input paths. Pass
+      inputs as quoted arguments through environment variables rather than interpolating them
+      into shell source.
+- [ ] Capture the CLI JSON result and expose documented outputs such as version code, edit
+      ID, review outcome, and result-file path. Add a concise Job Summary, preserving the CLI
+      exit status and the manual-submission instruction for exit code 8. Define which outputs
+      are available for skip, saved-without-review, and failure outcomes.
+- [ ] Keep `doctor` available through setup plus a separate CLI step before the expensive
+      build; do not introduce an implicit access-check request inside the publish action.
+- [ ] Test input forwarding, credential modes/cleanup, paths, shell metacharacters, success,
+      idempotent skip, ordinary failure, and exit code 8 using a stub CLI without live uploads.
+
+**DoD:** a single publish step replaces installation, Google Play key decoding, and the shell
+publish command in the supplied Android workflow. Build and signing steps stay explicit.
+
+### S10.3. Resolve release identity from the AAB in the CLI
+
+- [ ] Record a design decision for reading the base manifest's application ID, version code,
+      and version name. Evaluate native protobuf parsing against an external bundletool
+      dependency; account for dependency size, supported formats, and runner prerequisites.
+- [ ] Implement manifest reading in `internal/artifact`, orchestration in `internal/app`,
+      and flags/output in `internal/cli`, preserving the injected API factory and layering.
+- [ ] Define compatibility and conflict rules for AAB values, explicit flags, and AGP
+      `--metadata`. Use AAB version code for changelog selection and existing-release checks;
+      reject contradictory explicit expectations before API construction. Decide and document
+      whether AAB version name becomes the default release name.
+- [ ] Preserve inspection/upload identity: resolved metadata must describe the same artifact
+      bytes that are uploaded, including when the source path is replaced during publication.
+- [ ] Add fixtures/tests for valid and malformed manifests, missing/invalid identity fields,
+      conflicting inputs, changelog selection, and skip without a metadata sidecar. Assert
+      local failures happen before API construction or any upload.
+- [ ] Update the CLI contract, architecture, error documentation, README, and changelog in the
+      same change; describe any compatibility changes explicitly.
+
+**DoD:** publishing with `--changelog-dir` can resolve the version code from the AAB without
+      parsing `build.gradle.kts` or depending on an AGP intermediate metadata path.
+
+### S10.4. Validate the expected tag and simplify action inputs
+
+- [ ] Define an optional `expected-tag` action input and the corresponding app/CLI validation
+      contract. Initially compare exactly against `v<versionName>` from the AAB and document
+      the behavior when version name is absent. Validate before API construction/upload.
+- [ ] Make the publish action consume AAB identity through the CLI, allowing version-code
+      and release-name inputs to be omitted according to the S10.3 contract. Keep an explicit
+      package input available as a check against publishing the wrong app.
+- [ ] Test matching/mismatched tags, missing version name, explicit overrides, and failures
+      before upload. Remove Gradle `sed` parsing and duplicate changelog validation from the
+      documented target workflow once the CLI provides equivalent checks.
+
+**DoD:** the target workflow supplies the signed AAB, expected package, changelog directory,
+credentials, and release tag; the tool validates their consistency before uploading.
+
+### S10.5. Document, verify, and release the GitHub Actions integration
+
+- [ ] Add a dedicated usage-example stage to the documentation delivery: publish a complete,
+      copyable Android GitHub Actions workflow in the new `docs/` guide, with a short example
+      and link in README. Include checkout at the release tag, Java setup, Android checks,
+      signing/build, publication, per-app concurrency, and artifact retention.
+- [ ] Include both supported usage patterns: setup plus CLI (including an early `doctor`),
+      and the publish action. Show explicit `android/...` paths for a subdirectory project,
+      secret encoding requirements, file/ADC authentication alternatives, action revision
+      pinning, CLI version selection, outputs, and manual-review handling.
+- [ ] Document the initial explicit-version workflow after S10.2, then update the example to
+      the AAB-derived workflow after S10.4. Use released refs and versions that actually exist;
+      do not present the proposed `@v1` or any future CLI version as already available.
+- [ ] Add CI smoke coverage of action execution on the supported runners and validate action
+      metadata/workflow syntax. Run `make fmt`, `make lint`, and `make test` for implementation
+      changes; check documentation links and exercise the documented paths and inputs.
+- [ ] Define action release/versioning policy, publish the required CLI binaries before an
+      action depends on them, and verify the examples against the released action revision.
+- [ ] When S0 credentials and a dedicated signed test AAB are available, run an opt-in live
+      publication and record evidence. Track unavailable live verification separately from
+      completed local/stub checks; do not consume a production version code for a dry run.
+
+**DoD:** users can copy a documented, verified workflow and publish through a released action;
+setup-only usage, authentication, path semantics, outputs, and failure handling are explained.
+Local action verification and any pending live verification have separate recorded statuses.
