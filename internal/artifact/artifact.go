@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 )
@@ -17,6 +18,7 @@ type Info struct {
 	Path   string
 	Size   int64
 	SHA256 string
+	Signed bool
 }
 
 // Inspect verifies that path is a readable Android App Bundle and returns its
@@ -66,7 +68,23 @@ func Inspect(path string) (Info, error) {
 		Path:   path,
 		Size:   stat.Size(),
 		SHA256: hex.EncodeToString(hash.Sum(nil)),
+		Signed: hasSignature(reader),
 	}, nil
+}
+
+// hasSignature reports whether the bundle contains a JAR signature, which is
+// how Gradle and bundletool sign AAB files.
+func hasSignature(reader *zip.Reader) bool {
+	for _, file := range reader.File {
+		name := strings.ToLower(file.Name)
+		if !strings.HasPrefix(name, "meta-inf/") {
+			continue
+		}
+		if strings.HasSuffix(name, ".rsa") || strings.HasSuffix(name, ".ec") || strings.HasSuffix(name, ".dsa") {
+			return true
+		}
+	}
+	return false
 }
 
 func hasBundleConfig(reader *zip.Reader) bool {

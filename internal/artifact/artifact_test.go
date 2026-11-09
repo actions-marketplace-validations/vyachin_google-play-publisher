@@ -67,6 +67,24 @@ func TestInspect(t *testing.T) {
 	if info.Path != path {
 		t.Errorf("Path = %q, want %q", info.Path, path)
 	}
+	if info.Signed {
+		t.Error("unsigned bundle reported as signed")
+	}
+}
+
+func TestInspectDetectsSignature(t *testing.T) {
+	path := writeBundle(t, map[string]string{
+		"BundleConfig.pb":   "bundle-config",
+		"META-INF/CERT.RSA": "signature",
+	})
+
+	info, err := artifact.Inspect(path)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	if !info.Signed {
+		t.Fatal("signed bundle reported as unsigned")
+	}
 }
 
 func TestInspectRejectsNonBundle(t *testing.T) {

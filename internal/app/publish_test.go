@@ -17,6 +17,10 @@ import (
 )
 
 func writeAAB(t *testing.T) string {
+	return writeBundleFiles(t, map[string]string{"BundleConfig.pb": "bundle-config"})
+}
+
+func writeBundleFiles(t *testing.T, files map[string]string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "app-release.aab")
@@ -26,12 +30,14 @@ func writeAAB(t *testing.T) string {
 	}
 
 	zw := zip.NewWriter(f)
-	w, err := zw.Create("BundleConfig.pb")
-	if err != nil {
-		t.Fatalf("create zip entry: %v", err)
-	}
-	if _, err := w.Write([]byte("bundle-config")); err != nil {
-		t.Fatalf("write zip entry: %v", err)
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create zip entry: %v", err)
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Fatalf("write zip entry: %v", err)
+		}
 	}
 	if err := zw.Close(); err != nil {
 		t.Fatalf("close zip: %v", err)

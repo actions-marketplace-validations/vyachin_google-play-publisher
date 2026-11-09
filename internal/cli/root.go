@@ -93,8 +93,16 @@ func NewRootCmd(app *App) *cobra.Command {
 	flags.StringVar(&g.Credentials, "credentials", "", "path to service account JSON key (default: ADC)")
 	flags.StringVar(&g.Endpoint, "endpoint", "", "override API endpoint (testing)")
 
-	root.AddGroup(&cobra.Group{ID: "release", Title: "Release commands:"})
-	root.AddCommand(newPublishCmd(app, g), newVersionCmd(app, g))
+	root.AddGroup(
+		&cobra.Group{ID: "release", Title: "Release commands:"},
+		&cobra.Group{ID: "inspect", Title: "Inspect commands:"},
+	)
+	root.AddCommand(
+		newPublishCmd(app, g),
+		newDoctorCmd(app, g),
+		newStatusCmd(app, g),
+		newVersionCmd(app, g),
+	)
 
 	return root
 }

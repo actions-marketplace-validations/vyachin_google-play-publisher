@@ -102,20 +102,10 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		return err
 	}
 
-	if a.NewAPI == nil {
-		return exitcode.Errorf(exitcode.Internal, "API client is not configured")
-	}
-
 	ctx, cancel := context.WithTimeout(cmd.Context(), g.Timeout)
 	defer cancel()
 
-	api, err := a.NewAPI(ctx, play.Options{
-		CredentialsFile: g.Credentials,
-		Endpoint:        g.Endpoint,
-		UserAgent:       "gplay-publisher/" + a.Version.Version,
-		Logger:          a.Logger,
-		Debug:           g.Debug,
-	})
+	api, err := newAPIClient(ctx, a, g)
 	if err != nil {
 		return err
 	}

@@ -83,17 +83,15 @@ gplay publish --package com.example.app --aab app/build/outputs/bundle/release/a
 
 ### `gplay doctor` — MVP
 
-Проверяет готовность окружения, ничего не меняет:
+Проверяет готовность окружения, ничего не меняет. Без `--aab` проверяются только доступ и трек.
 
 | Проверка | Как |
 | --- | --- |
-| Креденшелы найдены и валидны | обмен токена по пути из ADC/`--credentials` |
-| API включён в проекте | первый успешный вызов |
-| Приложение доступно service account | `applications.tracks.releases.list` |
-| Трек существует | список треков, сверка имени |
-| AAB — валидный ZIP с `BundleConfig.pb` | чтение файла |
-| Подпись AAB присутствует (эвристика) | наличие `META-INF/*.RSA` / `*.EC` / `*.DSA` |
-| `--package` совпадает с `output-metadata.json` | если метаданные переданы |
+| `api` | токен и доступ к приложению (read-only запрос релизов) |
+| `track` | трек существует, показано число релизов |
+| `artifact` | ZIP с `BundleConfig.pb`, размер и sha256 |
+| `signature` | наличие JAR-подписи (`META-INF/*.RSA` / `*.EC` / `*.DSA`); отсутствие — код 7 |
+| `metadata` | если передан `--metadata`: `applicationId` совпадает с `--package`, `versionCode > 0` |
 
 ### `gplay status` — MVP (read-only)
 
