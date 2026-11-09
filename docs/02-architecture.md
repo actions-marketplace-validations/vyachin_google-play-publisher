@@ -46,20 +46,21 @@ internal/version/          версия, commit, дата сборки
 // internal/play
 type API interface {
     CreateEdit(ctx context.Context, pkg string) (editID string, err error)
-    UploadBundle(ctx context.Context, pkg, editID string, r io.ReaderAt, size int64) (BundleInfo, error)
+    UploadBundle(ctx context.Context, pkg, editID string, r io.Reader, size int64) (BundleInfo, error)
     UpdateTrack(ctx context.Context, pkg, editID, track string, rel Release) error
     ValidateEdit(ctx context.Context, pkg, editID string) error
     CommitEdit(ctx context.Context, pkg, editID string, opts CommitOptions) error
     DeleteEdit(ctx context.Context, pkg, editID string) error
-    ListTracks(ctx context.Context, pkg string) ([]TrackInfo, error)   // для doctor/status
+    TrackReleases(ctx context.Context, pkg, track string) ([]ReleaseSummary, error) // read-only
 }
 ```
 
 `CommitOptions{ChangesNotSentForReview bool, InReviewBehavior InReviewBehavior}`.
 `BundleInfo{VersionCode int64, SHA256, SHA1 string}` — ровно то, что нужно для лога и JSON.
 
-Реализация — `play.Client{svc *androidpublisher.Service}`; создаётся один раз на запуск с `option.WithScopes(...)`,
-`option.WithUserAgent("gplay-publisher/<version>")` и таймаутом HTTP-клиента.
+Реализация — `play.Client` с `*androidpublisher.Service`: сервис создаётся с `option.WithHTTPClient`
+(oauth2-клиент из ADC или `--credentials`) и `option.WithEndpoint` для тестов; User-Agent ставится в transport,
+таймаут задаётся контекстом операции.
 
 ## 4. Поток `publish`
 
@@ -104,9 +105,9 @@ Preflight намеренно дешёвый и не создаёт edit: сут�
 
 ### Загрузка
 
-- `ResumableMedia` с размером файла, `Content-Type: application/octet-stream`, чанк 8 MiB (кратен 256 KiB),
-  `ChunkRetryDeadline` ~30 s;
-- прогресс — в лог (не чаще раза в секунду), чтобы CI не выглядел зависшим;
+- `Media` с `googleapi.ChunkSize(8 MiB)` и `googleapi.ChunkRetryDeadline(30 s)`: файлы меньше чанка клиент
+  отправляет multipart-запросом, большие — resumable-чанками;
+- прогресс — `ProgressUpdater`, `INFO` каждые 5 % (в debug — подробнее), чтобы CI не выглядел зависшим;
 - после ответа — сверить `sha256` с локальным и залогировать `versionCode`.
 
 ### Обновление трека

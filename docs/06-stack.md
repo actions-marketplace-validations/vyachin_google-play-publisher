@@ -20,7 +20,7 @@
 | Конфигурация | Флаги + env вручную | Минимум магии, предсказуемый приоритет | При появлении конфиг-файла — `koanf` |
 | Логирование | `log/slog` (stdlib) | Структурные логи, уровни, JSON, нулевые зависимости | Практически никогда |
 | Play API | `google.golang.org/api/androidpublisher/v3` | Полное покрытие Edits API, resumable upload | Если клиент отстанет — точечный REST ([ADR-0001](adr/0001-androidpublisher-go-client.md)) |
-| Аутентификация | ADC через `option` (JSON-ключ по пути) | Стандарт Google, без ручного OAuth | Не планируется |
+| Аутентификация | ADC через `cloud.google.com/go/auth` (JSON-ключ по пути) | Стандарт Google, без ручного OAuth | Не планируется |
 | Ретраи | Свой `internal/retry` (~80 строк) | Нужны конкретные правила: 5xx/429, джиттер, cap, «не ретраить commit» | Если политика усложнится — `cenkalti/backoff/v5` |
 | AAB | `archive/zip` + `crypto/sha256` | Инспекция без bundletool | Если понадобится разбор манифеста — protobuf + Android resources |
 | JSON | `encoding/json` | Стандарт, стабильные теги | Не планируется |

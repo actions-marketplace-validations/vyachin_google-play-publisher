@@ -67,22 +67,24 @@
 **DoD:** `gplay --help`, `gplay version`, `gplay --debug version` работают; тесты и линт зелёные;
 panic/exit в `main` только в одном месте.
 
-## S2. Play-адаптер — 2 д
+## S2. Play-адаптер — 2 д — выполнено (кроме live-прогона)
 
-- [ ] `internal/play`: интерфейс `API` и реализация на `androidpublisher`.
-- [ ] Аутентификация: ADC, `--credentials`, scope `androidpublisher`, user-agent, HTTP-таймаут.
-- [ ] Методы: `CreateEdit`, `DeleteEdit`, `UploadBundle`, `UpdateTrack`, `ValidateEdit`, `CommitEdit`,
-      `ListTracks`/список релизов.
-- [ ] Resumable upload: чанк 8 MiB, `ChunkRetryDeadline`, `ProgressUpdater`.
-- [ ] Маппинг `googleapi.Error` → типизированные ошибки по [05-errors.md](docs/05-errors.md).
-- [ ] `debugTransport`: HTTP-обмен, тела ≤ 4 KiB, redaction; для upload — только заголовки.
-- [ ] Fake API на `httptest` + `option.WithEndpoint`; тесты happy path и 400/401/403/404/429/5xx.
-- [ ] Env-gated контрактный тест на тестовом приложении.
+- [x] `internal/play`: интерфейс `API` и реализация на `androidpublisher`.
+- [x] Аутентификация: ADC и `--credentials` через `cloud.google.com/go/auth`, scope `androidpublisher`,
+      User-Agent в transport; таймаут — контекстом операции.
+- [x] Методы: `CreateEdit`, `DeleteEdit`, `UploadBundle`, `UpdateTrack`, `ValidateEdit`, `CommitEdit`,
+      `TrackReleases` (read-only через `applications.tracks.releases.list`).
+- [x] Загрузка: `ChunkSize` 8 MiB, `ChunkRetryDeadline` 30 s, `ProgressUpdater` (INFO каждые 5 %);
+      маленькие файлы уходят multipart, большие — resumable.
+- [x] Маппинг `googleapi.Error` → типизированные ошибки по [05-errors.md](docs/05-errors.md).
+- [x] `debugTransport`: HTTP-обмен, тела ≤ 4 KiB, redaction; секреты вырезаются.
+- [x] Fake API на `httptest` + `option.WithEndpoint`; тесты happy path и 400/401/403/404/429/5xx,
+      а также multipart- и resumable-загрузки.
+- [x] Env-gated контрактный тест (`GPLAY_INTEGRATION=1`).
+- [ ] Live-прогон на тестовом приложении — после настройки доступов (S0).
 
-**DoD:** на тестовом приложении AAB загружается в edit и коммитится; ошибки Play дают ожидаемые коды;
-в debug-логе видны все четыре вызова и нет секретов.
-
-**Гейт:** без маппинга ошибок не начинать S4 (иначе нечего показывать пользователю).
+**DoD:** unit-часть закрыта; на реальном приложении AAB ещё не загружался (нет доступов).
+**Гейт:** без маппинга ошибок не начинать S4 (иначе нечего показывать пользователю) — закрыт.
 
 ## S3. AAB и домен релиза — 1 д
 
