@@ -4,6 +4,13 @@
 
 ### Added
 
+- `pull` (alias `download`) recreates a Play-style metadata directory from Google Play:
+  localized listings, full-size images, tester groups and the release notes of a selected
+  track. The target must be absent or empty; `--force` replaces a non-empty tree after the
+  download is staged and validated with the same rules as `publish --metadata-dir`. Pull uses
+  a read-only edit, never commits it and deletes it best-effort. `--track` chooses the track;
+  without `--version-code` the notes of every release on it are pulled, and with it only the
+  selected version. A pulled tree round-trips through `publish --metadata-dir`.
 - `publish --in-app-update-priority 0..5` sets the in-app update priority of the release. Play
   does not allow changing it once the release has been rolled out.
 - `publish --country` and `--include-rest-of-world` restrict an `inProgress` production release
@@ -28,6 +35,12 @@
   icon 512x512, feature graphic 1024x500, 8 MiB per image), image sets and tester files are
   authoritative, and `--metadata-dir` supplies changelogs for the AAB version code. The JSON
   result gains a `metadata` object with the applied counts.
+
+### Fixed
+
+- The Play image type for the app icon was spelled `appIcon`, but `edits.images` expects
+  `icon`. `publish --metadata-dir` now uploads `images/icon.png` with the correct type, and
+  `pull` reads the same type, so a pulled tree can be published again.
 
 ## v0.0.7 — 2026-11-09
 

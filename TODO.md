@@ -1,10 +1,10 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12 and S13 are done; S0 (Play
-Console access) was deferred by agreement, and the former S9 post-MVP list was dropped as
-out of scope. The post-S10 review (R16–R19, I7–I9) is fixed and released, including the
-removal of `--expected-tag` in S11.8; S11.9 fixes the publish action invocation and
-supersedes v0.0.6. The Gunclub workflow switch is done in that repository, and the live
+**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
+S14 (metadata pull) are done; S0 (Play Console access) was deferred by agreement, and the
+former S9 post-MVP list was dropped as out of scope. The post-S10 review (R16–R19, I7–I9) is
+fixed and released, including the removal of `--expected-tag` in S11.8; S11.9 fixes the
+publish action invocation and supersedes v0.0.6. The Gunclub workflow switch is done in that repository, and the live
 publish/upload runs succeeded against a real app; the remaining open items are the S0
 configuration checklist and the I3 evidence update.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
@@ -39,6 +39,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S11 | Post-S10 review fixes: commit outcomes, doctor identity, action result files | 3.5–6 d | R16–R19 and I7–I9 fixed with tests/docs; v0.0.6 released |
 | S12 | Release fields, `rollout` and `promote` | 1.5–2.5 d | Priority/targeting on publish; track changes without a new upload |
 | S13 | Store metadata in the publish edit | 1.5–2 d | Listings, images and testers committed with the AAB |
+| S14 | `pull`: recreate the metadata tree from Play | 1–1.5 d | A pulled tree round-trips through `publish --metadata-dir` |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -1288,3 +1289,36 @@ invalid metadata fails with code 2 before any API call; the local gate is green.
 **Note:** live verification against a real app remains the S0/I3 item; image replacement
 semantics (`deleteall` + upload) are covered by fake-API tests and documented for the first
 live run.
+
+## S14. `pull`: recreate the metadata tree from Play — 1–1.5 d — done [unplanned]
+
+**Goal:** bootstrap and refresh a versioned store-presence directory from the live Play state
+instead of copying listings, screenshots and testers by hand, so `publish --metadata-dir` can
+be adopted incrementally.
+
+- [x] `play.API` gains read-only `StoreListings`, `StoreImages`, `TesterGroups`, `AllTracks`
+      and `DownloadImage`; the edit is deleted without a commit. Image URLs get the `=s0`
+      full-size parameter and are fetched without Play credentials.
+- [x] `play.API` image type for the app icon is `icon` (the previous `appIcon` spelling was
+      rejected by `edits.images`); `storemeta.ImageTypes` lists the types in Play order.
+- [x] `internal/storemeta.Writer`: writes listings, singular images, numbered screenshots,
+      testers and changelogs into a hidden staging directory, validates the result with
+      `Read`, and swaps it into place; `--force` is required for a non-empty target and the
+      previous tree survives a failed download.
+- [x] `app.Pull`/`ValidatePullOptions`: local validation before the API client; all listings
+      and image types; testers for every track that has them; release notes from `--track`
+      (without `--version-code`: every release on the track, with it: only the selected
+      version), written for every version code of each selected release.
+- [x] CLI `pull` (alias `download`) with `--metadata-dir`, `--track`, `--version-code` and
+      `--force`; JSON and text results report listings, images, changelogs and testers.
+- [x] Tests: `play` client reads and image downloads (including status mapping and no
+      Authorization header), `storemeta` writer staging/force/abort/invalid data, `app.Pull`
+      selection and failure cleanup, and CLI JSON/text/usage tests.
+- [x] Documentation: [03-cli-contract.md](docs/03-cli-contract.md),
+      [02-architecture.md](docs/02-architecture.md), [06-stack.md](docs/06-stack.md),
+      [01-api-feasibility.md](docs/01-api-feasibility.md), README and CHANGELOG.
+
+**DoD:** `pull` recreates a valid metadata tree from a real or faked Play state; a failed pull
+leaves the target untouched; the local gate is green.
+**Note:** live verification against a real app remains the S0/I3 item; the read calls and image
+downloads are covered by fake-API and `httptest` tests only.

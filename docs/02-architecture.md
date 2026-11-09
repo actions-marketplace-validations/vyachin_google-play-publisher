@@ -24,12 +24,13 @@ internal/cli/                cobra: root + commands (thin layer, one file per co
   promote.go                 flags → app.Promote
   trackchange.go             shared JSON/text result of rollout and promote
   doctor.go                  flags → app.Doctor
+  pull.go                    flags → app.Pull
   status.go                  flags → app.Status
 internal/app/                use cases without cobra and without androidpublisher
 internal/play/               thin wrapper over androidpublisher: interface + client + error mapping
 internal/artifact/           artifact inspection: ZIP signature, output-metadata.json, sha256
 internal/release/            domain: Plan, status/rollout/notes validation, track names
-internal/storemeta/          metadata tree: listings, images, testers, local validation
+internal/storemeta/          metadata tree: listings, images, testers, read/write and validation
 internal/retry/              (reserved) backoff policy and error classification
 internal/logging/            slog, debug transport, secret redaction
 internal/exitcode/           typed errors → process exit codes
@@ -61,6 +62,11 @@ type API interface {
     CommitEdit(ctx context.Context, pkg, editID string, opts CommitOptions) error
     DeleteEdit(ctx context.Context, pkg, editID string) error
     TrackReleases(ctx context.Context, pkg, track string) ([]ReleaseSummary, error) // read-only
+    StoreListings(ctx context.Context, pkg, editID string) ([]Listing, error)       // pull
+    StoreImages(ctx context.Context, pkg, editID, language, imageType string) ([]Image, error)
+    TesterGroups(ctx context.Context, pkg, editID, track string) (Testers, error)
+    AllTracks(ctx context.Context, pkg, editID string) ([]TrackState, error)
+    DownloadImage(ctx context.Context, url string) ([]byte, error)                  // no Play credentials
 }
 ```
 
@@ -175,6 +181,19 @@ image formats and the fixed icon/feature-graphic sizes are local errors (code 2)
 cannot consume an edit. Within the edit each mentioned image set is cleared with
 `images.deleteall` and then uploaded, which makes the directory authoritative for that type;
 because everything is one edit, a failure leaves Play unchanged.
+
+### Pulling store metadata
+
+`pull` is the inverse of `--metadata-dir`: it opens a read-only edit, reads every listing,
+image, tester group and the release notes of a selected track, and writes the same tree that
+`publish --metadata-dir` accepts. The edit is never committed and is deleted best-effort.
+`internal/storemeta.Writer` stages the tree in a hidden sibling directory and runs the same
+`Read` validation before swapping it into place, so a failed download or an image that cannot
+be stored leaves the target untouched. The target must be absent or empty unless `--force` is
+passed; replacing a non-empty tree is a swap that keeps the previous tree until the new one is
+validated. Image URLs returned by `images.list` serve previews, so the adapter appends `=s0`
+and downloads the full-size bytes through an unauthenticated HTTP client (the CDN does not
+accept Play credentials).
 
 ### Commit
 

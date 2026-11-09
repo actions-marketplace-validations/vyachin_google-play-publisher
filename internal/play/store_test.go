@@ -98,11 +98,11 @@ func TestUploadImage(t *testing.T) {
 	})
 
 	client, _ := newClient(t, h)
-	if err := client.UploadImage(context.Background(), "com.example.app", "edit-1", "en-US", "appIcon", path); err != nil {
+	if err := client.UploadImage(context.Background(), "com.example.app", "edit-1", "en-US", "icon", path); err != nil {
 		t.Fatalf("UploadImage: %v", err)
 	}
 
-	if gotPath != "/upload/androidpublisher/v3/applications/com.example.app/edits/edit-1/listings/en-US/appIcon" {
+	if gotPath != "/upload/androidpublisher/v3/applications/com.example.app/edits/edit-1/listings/en-US/icon" {
 		t.Errorf("path = %q", gotPath)
 	}
 	if gotQuery != "multipart" {
@@ -119,7 +119,7 @@ func TestUploadImage(t *testing.T) {
 func TestUploadImageMissingFile(t *testing.T) {
 	client, _ := newClient(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
-	err := client.UploadImage(context.Background(), "com.example.app", "edit-1", "en-US", "appIcon",
+	err := client.UploadImage(context.Background(), "com.example.app", "edit-1", "en-US", "icon",
 		filepath.Join(t.TempDir(), "missing.png"))
 	if code := exitcode.From(err); code != exitcode.Usage {
 		t.Fatalf("code = %d, want %d: %v", code, exitcode.Usage, err)

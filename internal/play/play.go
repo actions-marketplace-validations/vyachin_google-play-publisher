@@ -14,9 +14,14 @@ type API interface {
 	UpdateTrack(ctx context.Context, pkg, editID, track string, rel Release) error
 	TrackEdit(ctx context.Context, pkg, editID, track string) (TrackState, error)
 	UpdateListing(ctx context.Context, pkg, editID string, listing Listing) error
+	StoreListings(ctx context.Context, pkg, editID string) ([]Listing, error)
 	DeleteAllImages(ctx context.Context, pkg, editID, language, imageType string) error
 	UploadImage(ctx context.Context, pkg, editID, language, imageType, path string) error
+	StoreImages(ctx context.Context, pkg, editID, language, imageType string) ([]Image, error)
+	DownloadImage(ctx context.Context, url string) ([]byte, error)
 	UpdateTesters(ctx context.Context, pkg, editID string, testers Testers) error
+	TesterGroups(ctx context.Context, pkg, editID, track string) (Testers, error)
+	AllTracks(ctx context.Context, pkg, editID string) ([]TrackState, error)
 	ValidateEdit(ctx context.Context, pkg, editID string) error
 	CommitEdit(ctx context.Context, pkg, editID string, opts CommitOptions) error
 	TrackReleases(ctx context.Context, pkg, track string) ([]ReleaseSummary, error)
@@ -90,6 +95,14 @@ type Listing struct {
 	ShortDescription string
 	FullDescription  string
 	Video            string
+}
+
+// Image is one store image listed inside an edit. URL serves the image
+// preview; the adapter appends the full-size parameter before downloading.
+type Image struct {
+	ID     string
+	SHA256 string
+	URL    string
 }
 
 // Testers is the tester configuration of one track. Play accepts Google Groups

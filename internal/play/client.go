@@ -6,8 +6,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -444,6 +446,190 @@ func (c *Client) UpdateTesters(ctx context.Context, pkg, editID string, testers 
 		_, err := c.svc.Edits.Testers.Update(pkg, editID, testers.Track, update).Context(ctx).Do()
 		return err
 	})
+}
+
+// StoreListings returns every localized store listing. Listings are sorted by
+// language so a pulled directory is deterministic regardless of API order.
+func (c *Client) StoreListings(ctx context.Context, pkg, editID string) ([]Listing, error) {
+	var resp *androidpublisher.ListingsListResponse
+
+	err := c.call(ctx, "listings.list", c.attempts(2), func(ctx context.Context) error {
+		listed, err := c.svc.Edits.Listings.List(pkg, editID).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		resp = listed
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return []Listing{}, nil
+	}
+
+	listings := make([]Listing, 0, len(resp.Listings))
+	for _, listing := range resp.Listings {
+		if listing == nil {
+			continue
+		}
+		listings = append(listings, Listing{
+			Language:         listing.Language,
+			Title:            listing.Title,
+			ShortDescription: listing.ShortDescription,
+			FullDescription:  listing.FullDescription,
+			Video:            listing.Video,
+		})
+	}
+	sort.Slice(listings, func(i, j int) bool { return listings[i].Language < listings[j].Language })
+	return listings, nil
+}
+
+// StoreImages returns every image of one type for a language, in display order.
+// The API URL serves a preview; the adapter appends the =s0 parameter Play uses
+// for the original image, exactly as fastlane does.
+func (c *Client) StoreImages(ctx context.Context, pkg, editID, language, imageType string) ([]Image, error) {
+	var resp *androidpublisher.ImagesListResponse
+
+	err := c.call(ctx, "images.list", c.attempts(2), func(ctx context.Context) error {
+		listed, err := c.svc.Edits.Images.List(pkg, editID, language, imageType).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		resp = listed
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return []Image{}, nil
+	}
+
+	images := make([]Image, 0, len(resp.Images))
+	for _, image := range resp.Images {
+		if image == nil {
+			continue
+		}
+		images = append(images, Image{
+			ID:     image.Id,
+			SHA256: image.Sha256,
+			URL:    fullSizeImageURL(image.Url),
+		})
+	}
+	return images, nil
+}
+
+// TesterGroups returns the tester configuration of one track.
+func (c *Client) TesterGroups(ctx context.Context, pkg, editID, track string) (Testers, error) {
+	var testers *androidpublisher.Testers
+
+	err := c.call(ctx, "testers.get", c.attempts(2), func(ctx context.Context) error {
+		got, err := c.svc.Edits.Testers.Get(pkg, editID, track).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		testers = got
+		return nil
+	})
+	if err != nil {
+		return Testers{}, err
+	}
+	if testers == nil {
+		return Testers{Track: track}, nil
+	}
+	return Testers{Track: track, GoogleGroups: append([]string(nil), testers.GoogleGroups...)}, nil
+}
+
+// AllTracks returns every track of an edit, including tracks without releases
+// and form-factor tracks. Tracks are sorted by name for deterministic output.
+func (c *Client) AllTracks(ctx context.Context, pkg, editID string) ([]TrackState, error) {
+	var resp *androidpublisher.TracksListResponse
+
+	err := c.call(ctx, "tracks.list", c.attempts(2), func(ctx context.Context) error {
+		listed, err := c.svc.Edits.Tracks.List(pkg, editID).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		resp = listed
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return []TrackState{}, nil
+	}
+
+	tracks := make([]TrackState, 0, len(resp.Tracks))
+	for _, track := range resp.Tracks {
+		if track == nil {
+			continue
+		}
+		state := TrackState{Track: track.Track, Releases: make([]Release, 0, len(track.Releases))}
+		for _, rel := range track.Releases {
+			if rel == nil {
+				continue
+			}
+			state.Releases = append(state.Releases, releaseFromAPI(rel))
+		}
+		tracks = append(tracks, state)
+	}
+	sort.Slice(tracks, func(i, j int) bool { return tracks[i].Track < tracks[j].Track })
+	return tracks, nil
+}
+
+// maxImageDownload bounds one image download. Play accepts images up to 8 MiB;
+// the extra byte distinguishes an oversized response from an exact limit hit.
+const maxImageDownload = 8 << 20
+
+// DownloadImage fetches the bytes of an image URL returned by images.list.
+// The URL is served by Google's image CDN and does not accept the Play API
+// credentials, so this deliberately uses an unauthenticated HTTP client.
+func (c *Client) DownloadImage(ctx context.Context, rawURL string) ([]byte, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return nil, exitcode.Errorf(exitcode.Internal, "invalid image URL %q", rawURL)
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, exitcode.Errorf(exitcode.Internal, "build image request: %v", err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, mapError(fmt.Errorf("download image: %w", err))
+	}
+	defer func() { _ = response.Body.Close() }()
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		coded := exitcode.Rejected
+		switch {
+		case response.StatusCode == http.StatusNotFound:
+			coded = exitcode.NotFound
+		case response.StatusCode == http.StatusTooManyRequests, response.StatusCode >= http.StatusInternalServerError:
+			coded = exitcode.Transient
+		}
+		return nil, exitcode.Errorf(coded,
+			"download image: %s returned HTTP %d", parsed.Host, response.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxImageDownload+1))
+	if err != nil {
+		return nil, mapError(fmt.Errorf("download image: %w", err))
+	}
+	if len(data) > maxImageDownload {
+		return nil, exitcode.Errorf(exitcode.Rejected,
+			"image from %s is larger than %d bytes", parsed.Host, maxImageDownload)
+	}
+	return data, nil
+}
+
+func fullSizeImageURL(raw string) string {
+	if raw == "" || strings.HasSuffix(raw, "=s0") {
+		return raw
+	}
+	return raw + "=s0"
 }
 
 // imageContentType maps an image extension to the upload media type.

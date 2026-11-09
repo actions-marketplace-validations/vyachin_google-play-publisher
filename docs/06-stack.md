@@ -59,6 +59,7 @@ google-play-publisher
 ├── rollout     (group: Release)
 ├── promote     (group: Release)
 ├── doctor      (group: Inspect)
+├── pull        (group: Inspect; alias: download)
 ├── status      (group: Inspect)
 ├── version
 └── completion                    — from cobra, free
@@ -75,6 +76,7 @@ internal/cli/                  cobra: root + commands (thin)
   root.go                      PersistentFlags, groups, ExecuteContext
   publish.go                   flags → app.Publish
   doctor.go                    flags → app.Doctor
+  pull.go                      flags → app.Pull
   status.go                    flags → app.Status
   version.go
 internal/app/                  use cases, without cobra and androidpublisher
@@ -83,10 +85,11 @@ internal/app/                  use cases, without cobra and androidpublisher
   promote.go                   source track → destination track
   doctor.go
   status.go
+  pull.go                      read-only edit → validate → write metadata tree
 internal/play/                 Play API adapter: API interface + implementation
 internal/artifact/             AAB inspection: ZIP, BundleConfig.pb, sha256, metadata
 internal/release/              domain: Plan, status/rollout/notes validation
-internal/storemeta/            metadata tree: listings, images, testers, local validation
+internal/storemeta/            metadata tree: listings, images, testers, read/write and validation
 internal/retry/                (reserved) error classification and backoff
 internal/logging/              slog, levels, debug transport, redaction
 internal/exitcode/             typed errors → exit codes

@@ -109,7 +109,7 @@ func TestPublishAppliesImages(t *testing.T) {
 	}
 
 	if len(fake.ClearedImages) != 2 {
-		t.Fatalf("cleared images = %v, want appIcon and phoneScreenshots", fake.ClearedImages)
+		t.Fatalf("cleared images = %v, want icon and phoneScreenshots", fake.ClearedImages)
 	}
 	if len(fake.UploadedImages) != 3 {
 		t.Fatalf("uploaded images = %v, want 3", fake.UploadedImages)

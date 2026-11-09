@@ -45,10 +45,13 @@ These are platform limits, not gaps in the tool. Accept them before building fur
    promotes a built version from one track to another (`promote`).
 7. Applies store listings, images and tester groups from a metadata directory in the same
    edit as the AAB (`--metadata-dir`), validating text limits and image sizes locally.
-8. Handles state conflicts safely (invalidated edit, reused version code) and does not wait
+8. Recreates that directory from Play for an existing app (`pull`), including listings,
+   images, tester groups and release notes, so the store presence can be versioned and
+   reviewed before the next release.
+9. Handles state conflicts safely (invalidated edit, reused version code) and does not wait
    for review: `internal` builds are usually available immediately.
-9. Supports `--debug`: detailed logs of every phase and HTTP exchange on `stderr`, with
-   secrets redacted.
+10. Supports `--debug`: detailed logs of every phase and HTTP exchange on `stderr`, with
+    secrets redacted.
 
 ## Non-goals
 

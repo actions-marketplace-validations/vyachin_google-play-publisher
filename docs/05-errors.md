@@ -74,6 +74,8 @@ Applies to idempotent or safely repeatable steps.
 | `bundles.upload` | Yes, at chunk level | `ResumableMedia` + `ChunkRetryDeadline`; if the session dies, a new session in the same edit |
 | `tracks.update` | Yes, ≤ 5 attempts, 5xx/429/network | Validation errors are not retried |
 | `tracks.releases.list` | Yes, ≤ 5 attempts | Read-only; used by preflight, `status` and commit reconciliation |
+| `listings.list`, `images.list`, `testers.get`, `tracks.list` | Yes, ≤ 2 attempts | Read-only calls inside the `pull` edit |
+| image CDN download (`pull`) | No application retry | The URL from `images.list`; 404 → 4, 429/5xx → 6, other HTTP status → 7 |
 | `edits.validate` | Yes, ≤ 5 attempts | For `--dry-run` |
 | `edits.commit` | **Careful** | No blind retry: see §4, the actual state is checked first |
 | `edits.delete` | 1 attempt, separate 15 s context | Not attempted after a signal; must not mask an earlier error; successful dry-run validation requires successful deletion |

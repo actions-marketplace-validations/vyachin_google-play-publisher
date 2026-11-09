@@ -31,13 +31,22 @@ const (
 // check catches an accidentally committed source asset before the upload.
 const MaxImageSize = 8 << 20
 
-// Play image types.
+// Play image types. The API calls the app icon simply "icon"; the metadata
+// tree stores it as images/icon.png.
 const (
-	ImageAppIcon        = "appIcon"
+	ImageAppIcon        = "icon"
 	ImageFeatureGraphic = "featureGraphic"
 	ImagePromoGraphic   = "promoGraphic"
 	ImageTVBanner       = "tvBanner"
 )
+
+// ImageTypes returns the image types in Play order: singular images first,
+// then galleries. Pull and publish use the same list, so a pulled tree is
+// always a complete description of what Play exposes.
+func ImageTypes() []string {
+	types := []string{ImageAppIcon, ImageFeatureGraphic, ImagePromoGraphic, ImageTVBanner}
+	return append(types, screenshotDirs...)
+}
 
 // Required listing files. A locale that has any listing file must have all
 // three, so a partial directory cannot wipe a description.

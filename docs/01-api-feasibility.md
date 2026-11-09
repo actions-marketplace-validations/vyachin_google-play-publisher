@@ -110,13 +110,18 @@ Besides tracks, an edit accepts the store presence of the app
 | Resource | Method | Content |
 | --- | --- | --- |
 | `edits.listings` | `update`, `patch`, `get`, `list`, `delete` | `title`, `shortDescription`, `fullDescription`, `video` for one BCP-47 language |
-| `edits.images` | `upload`, `delete`, `deleteall`, `list` | `appIcon`, `featureGraphic`, `promoGraphic`, `tvBanner` and the screenshot types, per language |
+| `edits.images` | `upload`, `delete`, `deleteall`, `list` | `icon`, `featureGraphic`, `promoGraphic`, `tvBanner` and the screenshot types, per language |
 | `edits.testers` | `update`, `patch`, `get` | `googleGroups[]` for a track |
 
 Limits that shape validation: title 30, short description 80 and full description 4000
 characters; icon 512x512; feature graphic 1024x500; images must be PNG or JPEG. Because an
 edit is a snapshot, listings, images, testers and the AAB are committed together, so the store
 metadata of a release can be versioned in the repository next to the changelogs.
+
+The same resources are readable inside an edit (`listings.list`, `images.list`, `testers.get`
+and `tracks.list`), which lets `pull` recreate the directory from Play. The image list returns
+a preview URL; the original image is served after appending `=s0`, and that URL does not accept
+the Play credentials, so it is downloaded with an unauthenticated HTTP request.
 
 ## 4. Review, submission and managed publishing
 

@@ -91,7 +91,7 @@ metadata/
     images/
       icon.png               # 512x512
       featureGraphic.png     # 1024x500
-      phoneScreenshots/01.png
+      phoneScreenshots/001.png
     changelogs/42.txt        # release notes, same as --changelog-dir
   testers/
     internal.txt             # one Google Group per line
@@ -107,6 +107,29 @@ that type. Every listing, image and tester file is validated before the API clie
 (text limits, PNG/JPEG, icon 512x512, feature graphic 1024x500, 8 MiB per file), so a typo fails
 with exit code 2 instead of consuming an edit. `--metadata-dir` and `--changelog-dir` cannot be
 combined; the metadata directory already contains `changelogs/`.
+
+### Recreating the tree from Play
+
+`pull` downloads the current listings, images, tester groups and release notes and writes a
+metadata directory in the same layout, ready to commit:
+
+```bash
+google-play-publisher pull -p com.example.app --metadata-dir metadata
+# alias
+google-play-publisher download -p com.example.app --metadata-dir metadata
+```
+
+The target must be absent or empty. `--force` replaces a non-empty tree; the download is staged
+and validated first, so a failure leaves the previous tree untouched. `--track` selects the
+track whose release notes are pulled (default `internal`). Without `--version-code`, notes from
+every release on the track are pulled; pass it to pull one specific release. Pull creates a
+read-only edit, never commits it and deletes it best-effort, so it consumes the daily edit quota
+but changes nothing in Play.
+
+The generated images are full-size originals (not Play's preview thumbnails), and screenshots
+are numbered in display order. A pulled tree round-trips through
+`publish --metadata-dir`: review it, commit it, and publish the next release with the same
+store presence.
 
 ## Staged rollouts and promotion
 
@@ -177,6 +200,7 @@ production.
   the rollout has started.
 - `--country DE,AT --include-rest-of-world` — country targeting; Play accepts it only for an
   `inProgress` release on the `production` track.
+- `pull --force` — replace an existing metadata directory after a successful, validated pull.
 - `google-play-publisher completion bash|zsh|fish|powershell` — shell completion.
 
 ## Limitations

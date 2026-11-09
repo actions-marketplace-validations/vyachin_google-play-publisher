@@ -18,24 +18,31 @@ type Fake struct {
 	UpdateTrackFunc     func(ctx context.Context, pkg, editID, track string, rel play.Release) error
 	TrackEditFunc       func(ctx context.Context, pkg, editID, track string) (play.TrackState, error)
 	UpdateListingFunc   func(ctx context.Context, pkg, editID string, listing play.Listing) error
+	StoreListingsFunc   func(ctx context.Context, pkg, editID string) ([]play.Listing, error)
 	DeleteAllImagesFunc func(ctx context.Context, pkg, editID, language, imageType string) error
 	UploadImageFunc     func(ctx context.Context, pkg, editID, language, imageType, path string) error
+	StoreImagesFunc     func(ctx context.Context, pkg, editID, language, imageType string) ([]play.Image, error)
+	DownloadImageFunc   func(ctx context.Context, url string) ([]byte, error)
 	UpdateTestersFunc   func(ctx context.Context, pkg, editID string, testers play.Testers) error
+	TesterGroupsFunc    func(ctx context.Context, pkg, editID, track string) (play.Testers, error)
+	AllTracksFunc       func(ctx context.Context, pkg, editID string) ([]play.TrackState, error)
 	ValidateEditFunc    func(ctx context.Context, pkg, editID string) error
 	CommitEditFunc      func(ctx context.Context, pkg, editID string, opts play.CommitOptions) error
 	TrackReleasesFunc   func(ctx context.Context, pkg, track string) ([]play.ReleaseSummary, error)
 
-	Calls           []string
-	DeletedEditIDs  []string
-	CommitOptions   []play.CommitOptions
-	UploadedSizes   []int64
-	UpdatedReleases []play.Release
-	UpdatedTracks   []string
-	ReadTracks      []string
-	Listings        []play.Listing
-	ClearedImages   []string
-	UploadedImages  []string
-	TesterUpdates   []play.Testers
+	Calls              []string
+	DeletedEditIDs     []string
+	CommitOptions      []play.CommitOptions
+	UploadedSizes      []int64
+	UpdatedReleases    []play.Release
+	UpdatedTracks      []string
+	ReadTracks         []string
+	Listings           []play.Listing
+	ClearedImages      []string
+	UploadedImages     []string
+	TesterUpdates      []play.Testers
+	DownloadedImageURL []string
+	ReadTesterTracks   []string
 }
 
 // CreateEdit records the call and returns "edit-1" by default.
@@ -96,6 +103,53 @@ func (f *Fake) UpdateListing(ctx context.Context, pkg, editID string, listing pl
 		return f.UpdateListingFunc(ctx, pkg, editID, listing)
 	}
 	return nil
+}
+
+// StoreListings records the call and returns no listings by default.
+func (f *Fake) StoreListings(ctx context.Context, pkg, editID string) ([]play.Listing, error) {
+	f.Calls = append(f.Calls, "StoreListings")
+	if f.StoreListingsFunc != nil {
+		return f.StoreListingsFunc(ctx, pkg, editID)
+	}
+	return nil, nil
+}
+
+// StoreImages records the call as "language/type" and returns no images by default.
+func (f *Fake) StoreImages(ctx context.Context, pkg, editID, language, imageType string) ([]play.Image, error) {
+	f.Calls = append(f.Calls, "StoreImages")
+	if f.StoreImagesFunc != nil {
+		return f.StoreImagesFunc(ctx, pkg, editID, language, imageType)
+	}
+	return nil, nil
+}
+
+// DownloadImage records the URL and returns no bytes by default.
+func (f *Fake) DownloadImage(ctx context.Context, url string) ([]byte, error) {
+	f.Calls = append(f.Calls, "DownloadImage")
+	f.DownloadedImageURL = append(f.DownloadedImageURL, url)
+	if f.DownloadImageFunc != nil {
+		return f.DownloadImageFunc(ctx, url)
+	}
+	return nil, nil
+}
+
+// TesterGroups records the track and returns empty testers by default.
+func (f *Fake) TesterGroups(ctx context.Context, pkg, editID, track string) (play.Testers, error) {
+	f.Calls = append(f.Calls, "TesterGroups")
+	f.ReadTesterTracks = append(f.ReadTesterTracks, track)
+	if f.TesterGroupsFunc != nil {
+		return f.TesterGroupsFunc(ctx, pkg, editID, track)
+	}
+	return play.Testers{Track: track}, nil
+}
+
+// AllTracks records the call and returns no tracks by default.
+func (f *Fake) AllTracks(ctx context.Context, pkg, editID string) ([]play.TrackState, error) {
+	f.Calls = append(f.Calls, "AllTracks")
+	if f.AllTracksFunc != nil {
+		return f.AllTracksFunc(ctx, pkg, editID)
+	}
+	return nil, nil
 }
 
 // DeleteAllImages records the call as "language/type".

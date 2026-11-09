@@ -129,6 +129,7 @@ func newRootCmd(app *App) (*cobra.Command, *globalFlags) {
 		newPromoteCmd(app, g),
 		newDoctorCmd(app, g),
 		newStatusCmd(app, g),
+		newPullCmd(app, g),
 		newVersionCmd(app, g),
 	)
 
