@@ -14,7 +14,8 @@ import (
 	"github.com/vyachin/google-play-publisher/internal/storemeta"
 )
 
-// PullOptions describe one read-only download of the store metadata.
+// PullOptions describe one read-only download of the store metadata. Track is
+// empty when every track should contribute release notes.
 type PullOptions struct {
 	Package     string
 	MetadataDir string
@@ -25,11 +26,12 @@ type PullOptions struct {
 	Force bool
 }
 
-// PullResult describes the tree written by Pull.
+// PullResult describes the tree written by Pull. Tracks lists the tracks whose
+// release notes were selected; VersionCodes is every version code considered.
 type PullResult struct {
 	Package      string
 	MetadataDir  string
-	Track        string
+	Tracks       []string
 	VersionCodes []int64
 	Listings     int
 	Images       int
@@ -49,9 +51,17 @@ func normalizePullOptions(opts PullOptions) (PullOptions, error) {
 	if pkg == "" {
 		return PullOptions{}, exitcode.Errorf(exitcode.Usage, "--package is required")
 	}
-	track, err := release.ValidateTarget(pkg, opts.Track)
-	if err != nil {
+	// ValidateTarget also checks the package pattern. The track is validated
+	// separately because an empty --track means "all tracks", not "internal".
+	if _, err := release.ValidateTarget(pkg, "internal"); err != nil {
 		return PullOptions{}, err
+	}
+
+	track := strings.TrimSpace(opts.Track)
+	if track != "" {
+		if err := release.ValidateTrackName(track); err != nil {
+			return PullOptions{}, err
+		}
 	}
 
 	dir := strings.TrimSpace(opts.MetadataDir)
@@ -98,7 +108,7 @@ func Pull(ctx context.Context, api play.API, opts PullOptions) (PullResult, erro
 	result := PullResult{
 		Package:      opts.Package,
 		MetadataDir:  opts.MetadataDir,
-		Track:        opts.Track,
+		Tracks:       []string{},
 		VersionCodes: []int64{},
 	}
 
@@ -169,33 +179,25 @@ func Pull(ctx context.Context, api play.API, opts PullOptions) (PullResult, erro
 		result.Testers++
 	}
 
-	track, found := findTrack(tracks, opts.Track)
-	switch {
-	case found:
-		releases, codes, err := selectPullReleases(track, opts.VersionCode)
-		if err != nil {
-			return PullResult{}, err
-		}
-		result.VersionCodes = codes
-		for _, selected := range releases {
-			for _, note := range selected.release.ReleaseNotes {
-				language := strings.TrimSpace(note.Language)
-				if language == "" || strings.TrimSpace(note.Text) == "" {
-					continue
+	releases, selectedTracks, codes, err := selectPullReleases(tracks, opts.Track, opts.VersionCode)
+	if err != nil {
+		return PullResult{}, err
+	}
+	result.Tracks = selectedTracks
+	result.VersionCodes = codes
+	for _, selected := range releases {
+		for _, note := range selected.release.ReleaseNotes {
+			language := strings.TrimSpace(note.Language)
+			if language == "" || strings.TrimSpace(note.Text) == "" {
+				continue
+			}
+			for _, code := range selected.codes {
+				if err := writer.AddChangelog(language, code, note.Text); err != nil {
+					return PullResult{}, err
 				}
-				for _, code := range selected.codes {
-					if err := writer.AddChangelog(language, code, note.Text); err != nil {
-						return PullResult{}, err
-					}
-					result.Changelogs++
-				}
+				result.Changelogs++
 			}
 		}
-	case opts.VersionCode > 0:
-		return PullResult{}, exitcode.WithHint(
-			exitcode.Errorf(exitcode.NotFound, "track %s was not found for %s", opts.Track, opts.Package),
-			"run status --package "+opts.Package+" --track "+opts.Track+" to inspect the track",
-		)
 	}
 
 	if err := writer.Commit(); err != nil {
@@ -239,47 +241,111 @@ func findTrack(tracks []play.TrackState, name string) (play.TrackState, bool) {
 // selectedPullRelease is one release and the version codes whose changelog
 // files should be written from its notes.
 type selectedPullRelease struct {
+	track   string
 	release play.Release
 	codes   []int64
 }
 
-// selectPullReleases chooses the release notes to pull. With an explicit
-// version code only that version is selected. Without one, notes from every
-// release on the track are pulled, so a full metadata snapshot contains the
-// history of the track, not only its newest release.
-func selectPullReleases(track play.TrackState, versionCode int64) ([]selectedPullRelease, []int64, error) {
-	if versionCode > 0 {
-		for _, rel := range track.Releases {
-			if containsVersionCode(rel.VersionCodes, versionCode) {
-				return []selectedPullRelease{{release: rel, codes: []int64{versionCode}}}, []int64{versionCode}, nil
-			}
+// selectPullReleases chooses the release notes to pull. Without a track filter
+// every track is considered; without a version code every release on each
+// considered track contributes. An explicit version code must resolve to
+// exactly one track, otherwise the caller has to disambiguate with --track.
+func selectPullReleases(
+	tracks []play.TrackState,
+	trackFilter string,
+	versionCode int64,
+) ([]selectedPullRelease, []string, []int64, error) {
+	candidates := tracks
+	if trackFilter != "" {
+		track, found := findTrack(tracks, trackFilter)
+		if !found {
+			return nil, nil, nil, exitcode.WithHint(
+				exitcode.Errorf(exitcode.NotFound, "track %s was not found", trackFilter),
+				"run status --package <package> --track "+trackFilter+" to inspect the track",
+			)
 		}
-		return nil, nil, exitcode.WithHint(
-			exitcode.Errorf(exitcode.NotFound,
-				"version code %d is not on track %s", versionCode, track.Track),
-			"omit --version-code to pull every release, or run status to list the version codes",
-		)
+		candidates = []play.TrackState{track}
+	}
+
+	if versionCode > 0 {
+		return selectPullVersion(candidates, trackFilter, versionCode)
 	}
 
 	seen := make(map[int64]bool)
-	releases := make([]selectedPullRelease, 0, len(track.Releases))
+	trackSet := make(map[string]bool)
+	releases := make([]selectedPullRelease, 0, len(candidates))
 	codes := make([]int64, 0)
-	for _, rel := range track.Releases {
-		selected := make([]int64, 0, len(rel.VersionCodes))
-		for _, code := range sortedVersionCodes(rel.VersionCodes) {
-			if seen[code] {
+	for _, track := range candidates {
+		for _, rel := range track.Releases {
+			selected := make([]int64, 0, len(rel.VersionCodes))
+			for _, code := range sortedVersionCodes(rel.VersionCodes) {
+				if seen[code] {
+					continue
+				}
+				seen[code] = true
+				selected = append(selected, code)
+				codes = append(codes, code)
+			}
+			if len(selected) == 0 {
 				continue
 			}
-			seen[code] = true
-			selected = append(selected, code)
-			codes = append(codes, code)
-		}
-		if len(selected) > 0 {
-			releases = append(releases, selectedPullRelease{release: rel, codes: selected})
+			releases = append(releases, selectedPullRelease{track: track.Track, release: rel, codes: selected})
+			trackSet[track.Track] = true
 		}
 	}
+
 	sort.Slice(codes, func(i, j int) bool { return codes[i] < codes[j] })
-	return releases, codes, nil
+	names := make([]string, 0, len(trackSet))
+	for name := range trackSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return releases, names, codes, nil
+}
+
+func selectPullVersion(
+	tracks []play.TrackState,
+	trackFilter string,
+	versionCode int64,
+) ([]selectedPullRelease, []string, []int64, error) {
+	matches := make([]selectedPullRelease, 0, 1)
+	for _, track := range tracks {
+		for _, rel := range track.Releases {
+			if containsVersionCode(rel.VersionCodes, versionCode) {
+				matches = append(matches, selectedPullRelease{
+					track:   track.Track,
+					release: rel,
+					codes:   []int64{versionCode},
+				})
+				break
+			}
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		where := "on any track"
+		if trackFilter != "" {
+			where = "on track " + trackFilter
+		}
+		return nil, nil, nil, exitcode.WithHint(
+			exitcode.Errorf(exitcode.NotFound, "version code %d was not found %s", versionCode, where),
+			"omit --version-code to pull every release, or run status to list the version codes",
+		)
+	case 1:
+		return matches, []string{matches[0].track}, []int64{versionCode}, nil
+	default:
+		names := make([]string, 0, len(matches))
+		for _, match := range matches {
+			names = append(names, match.track)
+		}
+		sort.Strings(names)
+		return nil, nil, nil, exitcode.WithHint(
+			exitcode.Errorf(exitcode.Usage,
+				"version code %d is on multiple tracks: %s", versionCode, strings.Join(names, ", ")),
+			"pass --track to choose one of those tracks",
+		)
+	}
 }
 
 func sortedVersionCodes(codes []int64) []int64 {

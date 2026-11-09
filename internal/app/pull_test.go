@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/png"
 	"os"
@@ -124,6 +125,9 @@ func TestPullWritesCompleteMetadataTree(t *testing.T) {
 	if result.Listings != 1 || result.Images != 4 || result.Changelogs != 1 || result.Testers != 1 {
 		t.Fatalf("result = %+v", result)
 	}
+	if len(result.Tracks) != 1 || result.Tracks[0] != "internal" {
+		t.Fatalf("tracks = %v", result.Tracks)
+	}
 	if len(result.VersionCodes) != 1 || result.VersionCodes[0] != 42 {
 		t.Fatalf("version codes = %v", result.VersionCodes)
 	}
@@ -175,13 +179,21 @@ func TestPullChangelogsForSelectedOrAllReleases(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "metadata")
 
 	fixture.fake.AllTracksFunc = func(context.Context, string, string) ([]play.TrackState, error) {
-		return []play.TrackState{{
-			Track: "internal",
-			Releases: []play.Release{
-				{VersionCodes: []int64{41}, ReleaseNotes: []play.LocalizedText{{Language: "en-US", Text: "Old"}}},
-				{VersionCodes: []int64{42, 43}, ReleaseNotes: []play.LocalizedText{{Language: "en-US", Text: "New"}}},
+		return []play.TrackState{
+			{
+				Track: "internal",
+				Releases: []play.Release{
+					{VersionCodes: []int64{41}, ReleaseNotes: []play.LocalizedText{{Language: "en-US", Text: "Old"}}},
+					{VersionCodes: []int64{42, 43}, ReleaseNotes: []play.LocalizedText{{Language: "en-US", Text: "New"}}},
+				},
 			},
-		}}, nil
+			{
+				Track: "beta",
+				Releases: []play.Release{
+					{VersionCodes: []int64{36}, ReleaseNotes: []play.LocalizedText{{Language: "en-US", Text: "Beta"}}},
+				},
+			},
+		}, nil
 	}
 
 	result, err := app.Pull(context.Background(), fixture.fake, app.PullOptions{
@@ -210,19 +222,21 @@ func TestPullChangelogsForSelectedOrAllReleases(t *testing.T) {
 	result, err = app.Pull(context.Background(), fixture.fake, app.PullOptions{
 		Package:     "com.example.app",
 		MetadataDir: target,
-		Track:       "internal",
 	})
 	if err != nil {
 		t.Fatalf("Pull default: %v", err)
 	}
-	if len(result.VersionCodes) != 3 || result.VersionCodes[0] != 41 ||
-		result.VersionCodes[1] != 42 || result.VersionCodes[2] != 43 {
+	if len(result.Tracks) != 2 || result.Tracks[0] != "beta" || result.Tracks[1] != "internal" {
+		t.Fatalf("default tracks = %v", result.Tracks)
+	}
+	if len(result.VersionCodes) != 4 || result.VersionCodes[0] != 36 ||
+		result.VersionCodes[1] != 41 || result.VersionCodes[2] != 42 || result.VersionCodes[3] != 43 {
 		t.Fatalf("default version codes = %v", result.VersionCodes)
 	}
-	if result.Changelogs != 3 {
-		t.Fatalf("changelogs = %d, want 3", result.Changelogs)
+	if result.Changelogs != 4 {
+		t.Fatalf("changelogs = %d, want 4", result.Changelogs)
 	}
-	for code, want := range map[string]string{"41": "Old", "42": "New", "43": "New"} {
+	for code, want := range map[string]string{"36": "Beta", "41": "Old", "42": "New", "43": "New"} {
 		data, err := os.ReadFile(filepath.Join(target, "en-US", "changelogs", code+".txt"))
 		if err != nil || strings.TrimSpace(string(data)) != want {
 			t.Fatalf("changelog %s = %q, %v; want %q", code, data, err, want)
@@ -359,29 +373,36 @@ func TestPullMissingTrack(t *testing.T) {
 		return []play.TrackState{{Track: "beta"}}, nil
 	}
 
-	target := filepath.Join(t.TempDir(), "metadata")
-	result, err := app.Pull(context.Background(), fixture.fake, app.PullOptions{
-		Package:     "com.example.app",
-		MetadataDir: target,
-		Track:       "internal",
-	})
-	if err != nil {
-		t.Fatalf("Pull without version code: %v", err)
-	}
-	if len(result.VersionCodes) != 0 || result.Changelogs != 0 {
-		t.Fatalf("result = %+v, want no changelogs", result)
-	}
-	if _, err := storemeta.Read(target); err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-
-	_, err = app.Pull(context.Background(), fixture.fake, app.PullOptions{
+	_, err := app.Pull(context.Background(), fixture.fake, app.PullOptions{
 		Package:     "com.example.app",
 		MetadataDir: filepath.Join(t.TempDir(), "metadata"),
 		Track:       "internal",
-		VersionCode: 42,
 	})
 	if code := exitcode.From(err); code != exitcode.NotFound {
 		t.Fatalf("code = %d, want %d: %v", code, exitcode.NotFound, err)
+	}
+}
+
+func TestPullRejectsAmbiguousVersionCode(t *testing.T) {
+	fixture := newPullFixture()
+	fixture.install(t)
+	fixture.fake.AllTracksFunc = func(context.Context, string, string) ([]play.TrackState, error) {
+		return []play.TrackState{
+			{Track: "internal", Releases: []play.Release{{VersionCodes: []int64{42}}}},
+			{Track: "beta", Releases: []play.Release{{VersionCodes: []int64{42}}}},
+		}, nil
+	}
+
+	_, err := app.Pull(context.Background(), fixture.fake, app.PullOptions{
+		Package:     "com.example.app",
+		MetadataDir: filepath.Join(t.TempDir(), "metadata"),
+		VersionCode: 42,
+	})
+	if code := exitcode.From(err); code != exitcode.Usage {
+		t.Fatalf("code = %d, want %d: %v", code, exitcode.Usage, err)
+	}
+	var coded *exitcode.Error
+	if !errors.As(err, &coded) || !strings.Contains(coded.Hint, "--track") {
+		t.Fatalf("error does not suggest --track: %v", err)
 	}
 }

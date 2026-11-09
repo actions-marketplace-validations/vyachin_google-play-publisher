@@ -24,18 +24,18 @@ type pullFlags struct {
 }
 
 type pullOutput struct {
-	SchemaVersion int     `json:"schemaVersion"`
-	OK            bool    `json:"ok"`
-	Command       string  `json:"command"`
-	Package       string  `json:"package"`
-	Track         string  `json:"track"`
-	MetadataDir   string  `json:"metadataDir"`
-	VersionCodes  []int64 `json:"versionCodes"`
-	Listings      int     `json:"listings"`
-	Images        int     `json:"images"`
-	Changelogs    int     `json:"changelogs"`
-	Testers       int     `json:"testers"`
-	DurationMs    int64   `json:"durationMs"`
+	SchemaVersion int      `json:"schemaVersion"`
+	OK            bool     `json:"ok"`
+	Command       string   `json:"command"`
+	Package       string   `json:"package"`
+	Tracks        []string `json:"tracks"`
+	MetadataDir   string   `json:"metadataDir"`
+	VersionCodes  []int64  `json:"versionCodes"`
+	Listings      int      `json:"listings"`
+	Images        int      `json:"images"`
+	Changelogs    int      `json:"changelogs"`
+	Testers       int      `json:"testers"`
+	DurationMs    int64    `json:"durationMs"`
 }
 
 func newPullCmd(a *App, g *globalFlags) *cobra.Command {
@@ -51,16 +51,20 @@ Google Play and recreate a metadata directory. The tree matches the layout accep
 publish --metadata-dir, so it can be committed to the repository and published later.
 
 Pull opens a read-only edit, never commits it, and deletes it before returning. Without
---version-code the release notes of every release on the track are pulled; the target directory
-must be absent or empty, and --force replaces a non-empty tree after validation succeeded.`,
+--track every track contributes release notes; without --version-code every release on each
+selected track contributes. The target directory must be absent or empty, and --force replaces
+a non-empty tree after validation succeeded.`,
 		Example: `  # recreate metadata from Play into a new directory
   google-play-publisher pull -p com.example.app --metadata-dir metadata
 
   # replace an existing metadata tree
   google-play-publisher pull -p com.example.app --metadata-dir metadata --force
 
-  # release notes from another track and version code
-  google-play-publisher pull -p com.example.app --metadata-dir metadata -t beta --version-code 42`,
+  # restrict release notes to one track
+  google-play-publisher pull -p com.example.app --metadata-dir metadata -t beta
+
+  # pull one version code only
+  google-play-publisher pull -p com.example.app --metadata-dir metadata --version-code 42`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runPull(cmd, a, g, flags)
@@ -70,8 +74,8 @@ must be absent or empty, and --force replaces a non-empty tree after validation 
 	f := cmd.Flags()
 	f.StringVarP(&flags.Package, "package", "p", "", "application id")
 	f.StringVar(&flags.MetadataDir, "metadata-dir", "", "target directory for the metadata tree")
-	f.StringVarP(&flags.Track, "track", "t", "internal", "track whose release notes are pulled")
-	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code whose release notes are pulled (default: every release on the track)")
+	f.StringVarP(&flags.Track, "track", "t", "", "restrict release notes to this track (default: all tracks)")
+	f.Int64Var(&flags.VersionCode, "version-code", 0, "pull release notes for this version only (default: every release)")
 	f.BoolVar(&flags.Force, "force", false, "replace a non-empty metadata directory")
 
 	registerTrackCompletion(cmd)
@@ -118,12 +122,16 @@ func writePullJSON(w io.Writer, result appcore.PullResult, duration time.Duratio
 	if codes == nil {
 		codes = []int64{}
 	}
+	tracks := result.Tracks
+	if tracks == nil {
+		tracks = []string{}
+	}
 	out := pullOutput{
 		SchemaVersion: 1,
 		OK:            true,
 		Command:       "pull",
 		Package:       result.Package,
-		Track:         result.Track,
+		Tracks:        tracks,
 		MetadataDir:   result.MetadataDir,
 		VersionCodes:  codes,
 		Listings:      result.Listings,
@@ -151,14 +159,15 @@ func printPull(w io.Writer, result appcore.PullResult) error {
 		fmt.Sprintf("  changelogs: %d", result.Changelogs),
 		fmt.Sprintf("  testers: %d", result.Testers),
 	}
-	if len(result.VersionCodes) == 0 {
-		lines = append(lines, fmt.Sprintf("  track: %s (no releases)", result.Track))
+	if len(result.Tracks) == 0 {
+		lines = append(lines, "  tracks: none (no releases)")
 	} else {
 		codes := make([]string, 0, len(result.VersionCodes))
 		for _, code := range result.VersionCodes {
 			codes = append(codes, strconv.FormatInt(code, 10))
 		}
-		lines = append(lines, fmt.Sprintf("  track: %s (version codes %s)", result.Track, strings.Join(codes, ", ")))
+		lines = append(lines, fmt.Sprintf("  tracks: %s (version codes %s)",
+			strings.Join(result.Tracks, ", "), strings.Join(codes, ", ")))
 	}
 	for _, line := range lines {
 		if _, err := fmt.Fprintln(w, line); err != nil {

@@ -8,10 +8,12 @@
   localized listings, full-size images, tester groups and the release notes of a selected
   track. The target must be absent or empty; `--force` replaces a non-empty tree after the
   download is staged and validated with the same rules as `publish --metadata-dir`. Pull uses
-  a read-only edit, never commits it and deletes it best-effort. `--track` chooses the track;
-  without `--version-code` the notes of every release on it are pulled, and with it only the
-  selected version. Tester groups come from testing tracks only; production is skipped because
-  Play rejects `testers.get` there. A pulled tree round-trips through `publish --metadata-dir`.
+  a read-only edit, never commits it and deletes it best-effort. Release notes cover every
+  track by default; `--track` restricts them to one track. Without `--version-code` the notes
+  of every release on each selected track are pulled, and with it only the selected version
+  (which must resolve to one track). A release without notes contributes its version code but
+  no file. Tester groups come from testing tracks only; production is skipped because Play
+  rejects `testers.get` there. A pulled tree round-trips through `publish --metadata-dir`.
 - `publish --in-app-update-priority 0..5` sets the in-app update priority of the release. Play
   does not allow changing it once the release has been rolled out.
 - `publish --country` and `--include-rest-of-world` restrict an `inProgress` production release
