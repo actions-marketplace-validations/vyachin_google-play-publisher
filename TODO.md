@@ -32,6 +32,9 @@
 
 ## S0. Подготовка окружения — 0.5–1 д
 
+> Пропущен по согласованию с владельцем: доступы к Play Console настраиваются параллельно.
+> Проверка появится в S2 (интеграционный прогон).
+
 - [ ] Выбрать тестовое приложение и `applicationId` (или согласовать использование рабочего).
 - [ ] Убедиться, что в Play Console есть хотя бы одна загруженная сборка: без неё Edits API не работает.
 - [ ] Включить `androidpublisher.googleapis.com` в GCP-проекте.
@@ -46,19 +49,20 @@
 
 **Гейт:** без S0 нельзя начинать S2 (некуда публиковать и нечем авторизоваться).
 
-## S1. Каркас проекта — 1–1.5 д
+## S1. Каркас проекта — 1–1.5 д — выполнено
 
-- [ ] `go.mod`, module path, версия Go; `go mod tidy`.
-- [ ] `cmd/gplay/main.go`: сборка `App`, `cli.ExecuteContext`, `os.Exit(code)`.
-- [ ] `internal/cli/root.go`: cobra root, группы `Release`/`Inspect`, `PersistentFlags`
+- [x] `go.mod`, module path, версия Go; `go mod tidy`.
+- [x] `cmd/gplay/main.go`: сборка `App`, `cli.Execute`, `os.Exit(code)`.
+- [x] `internal/cli/root.go`: cobra root + `PersistentFlags`
       (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`, `--endpoint`).
-- [ ] `App`: `Stdout/Stderr`, `Now`, ленивая фабрика `play.API`.
-- [ ] `internal/logging`: slog, уровни, `text`/`json`, `NO_COLOR`, включение `DEBUG`.
-- [ ] `internal/exitcode`: типы ошибок и маппинг 0–8/130; `SilenceUsage/SilenceErrors`.
-- [ ] `internal/version` + `gplay version` (ldflags и `debug.ReadBuildInfo`).
-- [ ] `Makefile` (`build`, `test`, `test-race`, `lint`, `cover`, `snapshot`).
-- [ ] `.golangci.yml`, GitHub Actions: `build`, `test`, `lint`.
-- [ ] Тесты: глобальные флаги, коды выхода, `version`.
+- [x] `App`: `Stdout/Stderr`, `Now`; фабрика `play.API` — в S2 (когда появится интерфейс).
+- [x] `internal/logging`: slog, уровни, `text`/`json`, включение `DEBUG`.
+- [x] `internal/exitcode`: типы ошибок и маппинг 0–8/130; `SilenceUsage/SilenceErrors`.
+- [x] `internal/version` + `gplay version` (ldflags).
+- [x] `Makefile` (`build`, `test`, `test-race`, `lint`, `cover`, `snapshot`).
+- [x] `.golangci.yml`, GitHub Actions: `build`, `test`, `lint`.
+- [x] Тесты: глобальные флаги, коды выхода, `version`.
+- [ ] Группы `Release`/`Inspect` — добавить в S4/S5 вместе с командами (пустые группы портят `--help`).
 
 **DoD:** `gplay --help`, `gplay version`, `gplay --debug version` работают; тесты и линт зелёные;
 panic/exit в `main` только в одном месте.
