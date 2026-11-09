@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.1 — 2026-11-09
+
+### Added
+
+- The publish action declares GitHub Marketplace branding: the `upload` icon and the
+  green color. The Marketplace listing now shows the action badge.
+
 ## v0.1.0 — 2026-11-09
 
 ### Added

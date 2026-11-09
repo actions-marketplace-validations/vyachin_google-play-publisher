@@ -8,7 +8,7 @@ A Go CLI that publishes a signed Android App Bundle (AAB) to Google Play.
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/vyachin/google-play-publisher/releases/latest)
 [![AI-assisted](https://img.shields.io/badge/AI--assisted-DeepSeek%20%2B%20Codex-blueviolet?style=flat-square)](#development-disclosure)
 
-**Status:** v0.1.0. Publishing targets the `internal` track.
+**Status:** v0.1.1. Publishing targets the `internal` track.
 
 ## Installation
 
@@ -179,9 +179,9 @@ with key decoding, JSON capture and Job Summary:
     umask 077
     printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
 
-- uses: vyachin/google-play-publisher@v0.1.0
+- uses: vyachin/google-play-publisher@v0.1.1
   with:
-    version: 0.1.0
+    version: 0.1.1
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
@@ -194,7 +194,7 @@ with key decoding, JSON capture and Job Summary:
 stored base64-encoded.
 
 See [docs/07-github-actions.md](docs/07-github-actions.md) for both usage patterns, credential
-modes, outputs and troubleshooting. The actions are released as v0.1.0; do not use `@main` in
+modes, outputs and troubleshooting. The actions are released as v0.1.1; do not use `@main` in
 production.
 
 ## Useful options

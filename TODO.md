@@ -1,9 +1,9 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.1.0 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
-S14 (metadata pull), S15 (single metadata flag), S16 (text-only logs) and S17 (no CLI
-endpoint override) are done; S0 (Play Console access) was deferred by agreement, and the
-former S9 post-MVP list was dropped as out of scope. The post-S10 review (R16–R19, I7–I9)
+**Status:** v0.1.1 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
+S14 (metadata pull), S15 (single metadata flag), S16 (text-only logs), S17 (no CLI endpoint
+override) and S19 (Marketplace branding) are done; S0 (Play Console access) was deferred by
+agreement, and the former S9 post-MVP list was dropped as out of scope. The post-S10 review (R16–R19, I7–I9)
 is fixed and released, including the removal of `--expected-tag` in S11.8; S11.9 fixes the
 publish action invocation and supersedes v0.0.6. The downstream workflow switch is done in the
 consuming repository, and the live publish/upload runs succeeded against a real app; the
@@ -45,6 +45,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S16 | Remove JSON log format | 0.25 d | One JSON flag: `--json` for the result only |
 | S17 | Remove the CLI endpoint override | 0.25 d | Production flags cannot redirect the Play client |
 | S18 | Release v0.1.0 | 0.25 d | Tagged release with verified archives and checksums |
+| S19 | Release v0.1.1 with Marketplace branding | 0.25 d | Action badge is publishable in Marketplace |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -1396,3 +1397,15 @@ the extracted binary reports version `0.1.0`, commit `49fba8d` and Go `1.27.3`.
 
 **DoD:** `v0.1.0` is published with verified archives and checksums, and the documented pins
 point at that release.
+
+## S19. Release v0.1.1 with Marketplace branding — 0.25 d — in progress [unplanned]
+
+**Goal:** satisfy the GitHub Marketplace listing form by declaring an icon and color for the
+publish action, and ship them in a tagged release.
+
+- [x] Add `branding` (`upload`, green) to the root `action.yml` and validate the metadata.
+- [x] Add the CHANGELOG section and bump action/CLI pins to `0.1.1`.
+- [ ] Tag `v0.1.1`, verify the release workflow and record evidence.
+
+**DoD:** `v0.1.1` is published with the branding metadata, and the Marketplace form accepts the
+icon and color.
