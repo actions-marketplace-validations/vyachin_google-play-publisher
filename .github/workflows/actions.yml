@@ -1,0 +1,121 @@
+name: actions
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: setup (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate action metadata
+        run: |
+          npx --yes @action-validator/cli@0.6.0 action.yml
+          npx --yes @action-validator/cli@0.6.0 setup/action.yml
+
+      - name: Install the CLI with the setup action
+        id: setup
+        uses: ./setup
+        with:
+          version: 0.0.4
+
+      - name: Check the installed version
+        run: |
+          google-play-publisher --json version > version.json
+          jq -e '.version == "0.0.4"' version.json
+          test "${{ steps.setup.outputs.version }}" = "0.0.4"
+          test -n "${{ steps.setup.outputs.path }}"
+
+  publish-stub:
+    name: publish action with a stub CLI (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a stub CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/stub"
+          cat >"$RUNNER_TEMP/stub/google-play-publisher" <<'SH'
+          #!/usr/bin/env bash
+          cat <<'JSON'
+          {"ok":true,"command":"publish","package":"com.example.app","versionName":"1.0.42","track":"internal","status":"completed","versionCode":42,"sha256":"b1946ac92492d2347c6235b4d2611184","editId":"edit-1","review":"sent","managedPublishing":"unknown","durationMs":1}
+          JSON
+          SH
+          chmod 0755 "$RUNNER_TEMP/stub/google-play-publisher"
+
+      - name: Run the publish action
+        id: publish
+        uses: ./
+        env:
+          GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
+        with:
+          version: 0.0.4
+          package: com.example.app
+          aab: android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          changelog-dir: android/metadata
+          expected-tag: v1.0.42
+
+      - name: Assert the action outputs
+        run: |
+          test "${{ steps.publish.outputs.version-code }}" = "42"
+          test "${{ steps.publish.outputs.edit-id }}" = "edit-1"
+          test "${{ steps.publish.outputs.review }}" = "sent"
+          test "${{ steps.publish.outputs.skipped }}" = "false"
+          test "${{ steps.publish.outputs.manual-action }}" = "false"
+          test -f "${{ steps.publish.outputs.result-file }}"
+
+  publish-stub-manual:
+    name: publish action manual-review exit code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create a stub CLI that saves without review
+        run: |
+          mkdir -p "$RUNNER_TEMP/stub"
+          cat >"$RUNNER_TEMP/stub/google-play-publisher" <<'SH'
+          #!/usr/bin/env bash
+          cat <<'JSON'
+          {"ok":true,"command":"publish","package":"com.example.app","versionName":"1.0.42","track":"internal","status":"completed","versionCode":42,"sha256":"b1946ac92492d2347c6235b4d2611184","editId":"edit-2","review":"notSent","managedPublishing":"unknown","durationMs":1}
+          JSON
+          exit 8
+          SH
+          chmod 0755 "$RUNNER_TEMP/stub/google-play-publisher"
+
+      - name: Run the publish action
+        id: publish
+        continue-on-error: true
+        uses: ./
+        env:
+          GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
+        with:
+          version: 0.0.4
+          package: com.example.app
+          aab: android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+
+      - name: Assert the manual-review outputs
+        run: |
+          test "${{ steps.publish.outcome }}" = "failure"
+          test "${{ steps.publish.outputs.manual-action }}" = "true"
+          test "${{ steps.publish.outputs.review }}" = "notSent"

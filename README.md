@@ -75,6 +75,26 @@ legacy cross-check. Locales without a file for that version code are skipped; wh
 exists at all, the command fails with exit code 2 and the path it checked. `--release-name`
 is optional; when it is empty, Play generates the name from the AAB version name.
 
+## GitHub Actions
+
+A setup action installs a released CLI and a publish action runs the same command as the CLI,
+with key decoding, JSON capture and Job Summary:
+
+```yaml
+- uses: vyachin/google-play-publisher@<release-tag>
+  with:
+    version: <cli-version>
+    package: com.example.app
+    aab: android/app/build/outputs/bundle/release/app-release.aab
+    track: internal
+    changelog-dir: android/metadata
+    credentials-base64: ${{ secrets.GOOGLE_PLAY_SA_BASE64 }}
+```
+
+See [docs/07-github-actions.md](docs/07-github-actions.md) for both usage patterns, credential
+modes, outputs and troubleshooting. The actions are published with the next release; do not
+use `@main` in production.
+
 ## Useful options
 
 - `--dry-run` — upload the AAB and validate the edit without committing. The upload still

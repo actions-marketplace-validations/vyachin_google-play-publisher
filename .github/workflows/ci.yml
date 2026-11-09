@@ -34,6 +34,9 @@ jobs:
       - name: Lint shell scripts
         run: shellcheck scripts/*.sh
 
+      - name: Check documentation links
+        run: python3 scripts/check_links.py
+
       - name: Lint workflows
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12

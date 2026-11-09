@@ -546,9 +546,9 @@ The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
 document, verify and release the result. S10 can proceed independently of the S9
 rollout/promote work. S10.0 is accepted in
-[ADR-0004](docs/adr/0004-github-actions.md); S10.1–S10.4 (setup action, publish action,
-AAB identity and expected-tag validation) are implemented; implementation continues with
-S10.5.
+[ADR-0004](docs/adr/0004-github-actions.md); S10.1–S10.5 (setup action, publish action,
+AAB identity, expected-tag validation and documentation/CI verification) are implemented;
+only the release and the Gunclub switch (S10.6) remain.
 
 ### Analysis
 
@@ -754,36 +754,36 @@ bytes are the inspected bytes.
 **DoD:** the target workflow supplies the signed AAB, expected package, changelog directory,
 credentials and release tag; the tool validates their consistency before uploading.
 
-### S10.5. Document and verify the GitHub Actions integration — 1.5–2 d
+### S10.5. Document and verify the GitHub Actions integration — 1.5–2 d — done
 
-- [ ] Create `docs/07-github-actions.md` and link it from `docs/README.md`; add a short example
-      and link to README. Also add the action ADR to the `docs/README.md` decision list. Cover
-      the support matrix, setup usage, publish usage, inputs and outputs, both credential
-      modes and ADC, path semantics, version/action pinning, concurrency, managed publishing,
-      artifact retention and troubleshooting.
-- [ ] Publish a complete, copyable Android GitHub Actions workflow: checkout, Java setup,
-      Android checks, signing/build, publication, per-app concurrency and artifact retention.
-      Show explicit `android/...` paths for a subdirectory project and both usage patterns:
-      setup plus CLI (including an early `doctor`) and the publish action.
-- [ ] Document the initial explicit-version workflow after S10.2, then update the example to
-      the AAB-derived workflow after S10.4. Use released refs and versions that actually
-      exist; do not present a proposed floating tag or an unreleased CLI version as available.
-- [ ] Add CI smoke coverage for both actions on `ubuntu-latest` and `ubuntu-24.04-arm` using a
-      published CLI version; validate workflow and action YAML (`actionlint` plus a schema
-      check for `action.yml`), lint the scripts with `shellcheck`, and check documentation
-      links.
-- [ ] Verify the stub-based action tests require no Play credentials and record live
+- [x] Create [docs/07-github-actions.md](docs/07-github-actions.md) and link it from
+      `docs/README.md`; add a short example and link to README. Also add the action ADR to the
+      `docs/README.md` decision list. Cover the support matrix, setup usage, publish usage,
+      inputs and outputs, both credential modes and ADC, path semantics, version/action
+      pinning, concurrency, managed publishing, artifact retention and troubleshooting.
+- [x] Publish complete Android GitHub Actions workflows: checkout, Java setup, signing/build,
+      publication, per-app concurrency and artifact retention. Show explicit `android/...`
+      paths for a subdirectory project and both usage patterns: setup plus CLI (including an
+      early `doctor`) and the publish action.
+- [x] Document the AAB-derived workflows after S10.4. The examples use `<release-tag>` and
+      `<cli-version>` placeholders until S10.6 publishes the release; they do not present a
+      floating tag or an unreleased version as available.
+- [x] Add CI smoke coverage for both actions on `ubuntu-latest` and `ubuntu-24.04-arm` using a
+      published CLI version; validate workflow and action YAML (`actionlint` plus
+      `@action-validator/cli`), lint the scripts with `shellcheck`, and check documentation
+      links with `scripts/check_links.py`.
+- [x] Verify the stub-based action tests require no Play credentials and record live
       verification separately. When S0 credentials and a dedicated signed test AAB are
       available, run the opt-in live publication through the action; never consume a
       production version code for a dry run.
-- [ ] Run `make fmt`, `make lint`, `make test`, `make test-race` and `make cover` for the CLI
-      changes; keep total coverage above the 80% gate. Add CHANGELOG entries for the actions
-      and for every CLI behavior change in the same release.
+- [x] Run `make fmt`, `make lint`, `make test`, `make test-race` and `make cover` for the CLI
+      changes; total coverage is 81.1%, above the 80% gate. CHANGELOG entries cover the
+      actions and every CLI behavior change in the release.
 
 **DoD:** the guide and both action interfaces are complete and verified with stub-based tests;
 setup-only usage, authentication, path semantics, outputs and failure handling are explained;
-local stub verification and pending live verification have separate recorded statuses. The
-release itself is S10.6.
+local stub verification and pending live verification have separate recorded statuses. S10.6
+replaces the placeholders with the released tag/version and verifies the examples.
 
 ### S10.6. Release the CLI and switch the Gunclub workflow — 0.5–1 d
 

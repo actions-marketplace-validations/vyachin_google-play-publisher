@@ -10,7 +10,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/version.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/version.Date=$(DATE)
 
-.PHONY: all build test test-race test-scripts lint fmt cover snapshot clean
+.PHONY: all build test test-race test-scripts test-docs lint fmt cover snapshot clean
 
 all: build
 
@@ -22,6 +22,7 @@ test:
 	go test ./...
 	bash scripts/setup_test.sh
 	bash scripts/publish_test.sh
+	python3 scripts/check_links.py
 
 test-race:
 	go test -race ./...
@@ -29,6 +30,9 @@ test-race:
 test-scripts:
 	bash scripts/setup_test.sh
 	bash scripts/publish_test.sh
+
+test-docs:
+	python3 scripts/check_links.py
 
 lint:
 	golangci-lint run

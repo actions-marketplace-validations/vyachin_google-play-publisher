@@ -11,6 +11,9 @@
   required.
 - `--if-exists=skip` works without a metadata sidecar.
 - `--expected-tag` asserts `v<AAB versionName>` before any upload.
+- GitHub Actions setup and publish actions, with checksum-verified installation, safe
+  credential handling, JSON outputs and a Job Summary. They are published with the next
+  release.
 - `--json` publish results include `schemaVersion` and `versionName`.
 
 ### Changed
