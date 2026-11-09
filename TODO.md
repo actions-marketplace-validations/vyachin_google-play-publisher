@@ -2,7 +2,7 @@
 
 **Status:** v0.0.3 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
 by agreement; S9 is post-MVP. S10 (GitHub Actions usability) is analyzed and planned as
-S10.0–S10.6.
+S10.0–S10.6; S10.0 (design) is done.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -602,52 +602,52 @@ parallel with S10.3, because the first publish action keeps an explicit `--versi
 | S10.5 | 1.5–2 d | S10.1–S10.4 |
 | S10.6 | 0.5–1 d | S10.5 and a published release |
 
-### S10.0. Design gate — 0.5–1 d
+### S10.0. Design gate — 0.5–1 d — done
 
-- [ ] **D1 — Action packaging.** Use composite actions with bash entry points
+- [x] **D1 — Action packaging.** Use composite actions with bash entry points
       (`setup/action.yml`, root `action.yml`, shared scripts) so there is no Node build step
       and the CLI remains the only component that talks to Play. Record that composite actions
       have no `pre`/`post`: cleanup is a `trap` inside the same `run` step plus a documented
       `$RUNNER_TEMP` lifecycle. Revisit a JavaScript action only if guaranteed cleanup on
       cancellation or shared cross-platform logic becomes a requirement.
-- [ ] **D2 — Version and ref policy.** Accept `X.Y.Z` and `vX.Y.Z` for the CLI version input;
+- [x] **D2 — Version and ref policy.** Accept `X.Y.Z` and `vX.Y.Z` for the CLI version input;
       reject ranges, branches and `latest`. Use `github.action_ref` when the runner exposes it
       and it is a release tag; otherwise require an explicit input. Decide whether the
       repository ever gets a floating major tag and do not advertise one before it exists;
       document pinning by release tag and by commit SHA.
-- [ ] **D3 — AAB identity source.** Read `base/manifest/AndroidManifest.xml` from the AAB ZIP.
+- [x] **D3 — AAB identity source.** Read `base/manifest/AndroidManifest.xml` from the AAB ZIP.
       Compare a hand-written `protowire` decoder for `aapt.pb.XmlNode`/`XmlElement`/
       `XmlAttribute`/`Item` with generated code from a vendored AOSP `Resources.proto`
       (Apache-2.0); choose the smaller option that keeps the schema readable and testable.
       Handle `versionCodeMajor`, reject resource references (`@string/...`) for
       `versionCode`/`versionName` with exit code 2 and a hint, and bound the decompressed
       manifest size. Add fixtures from real Gradle/bundletool AABs.
-- [ ] **D4 — Identity precedence and compatibility.** The AAB is authoritative for values not
+- [x] **D4 — Identity precedence and compatibility.** The AAB is authoritative for values not
       passed explicitly; explicit `--package`/`--version-code` must match it, and `--metadata`
       stays an optional legacy cross-check. Decide whether `versionName` becomes the default
       `--release-name` and how an explicitly empty name is expressed. Decide the new JSON
       fields (`versionName`, identity source) and whether they need a `schemaVersion` bump.
-- [ ] **D5 — Artifact identity.** Open the AAB once, keep the `*os.File` inside the opaque
+- [x] **D5 — Artifact identity.** Open the AAB once, keep the `*os.File` inside the opaque
       `app.Prepared`, compute size and sha256 from it and upload from the same handle; close
       it on every path, including `--dry-run` and errors. Cover a path replacement during a
       run.
-- [ ] **D6 — Credentials lifecycle.** Support mutually exclusive `credentials-base64` and
+- [x] **D6 — Credentials lifecycle.** Support mutually exclusive `credentials-base64` and
       `credentials-file` inputs and fall back to ADC when neither is set; write decoded
       material to a `umask 077` file under `$RUNNER_TEMP`, mask both raw and encoded values,
       never print contents, and clean up on success, failure and termination. Document the
       self-hosted caveat: hosted runners wipe `$RUNNER_TEMP`, self-hosted runners may not.
-- [ ] **D7 — Outputs and exit codes.** Always write the CLI JSON result to a file and expose
+- [x] **D7 — Outputs and exit codes.** Always write the CLI JSON result to a file and expose
       `version-code`, `edit-id`, `review`, `result-file`, `skipped`, `manual-action` and
       `error-code`; keep the CLI exit status, including 8; write a Job Summary that explains
       manual submission. Decide whether a summary-write failure fails the action
       (recommended: no, log a warning).
-- [ ] **D8 — Platform scope.** Support Linux amd64/arm64 on `ubuntu-latest` and
+- [x] **D8 — Platform scope.** Support Linux amd64/arm64 on `ubuntu-latest` and
       `ubuntu-24.04-arm`; fail fast with a clear message on other OS/architectures. Treat
       macOS/Windows action support as a separate follow-up even though the binaries exist.
 
-**DoD:** D1–D8 are recorded in `docs/adr/0004-github-actions.md`, and the CLI contract,
-architecture and the new GitHub Actions guide describe the resulting behavior. No action
-implementation starts before the decisions are settled.
+**DoD:** D1–D8 are recorded in [ADR-0004](docs/adr/0004-github-actions.md); the behavior
+documents are updated by the stages that implement each decision (S10.3, S10.5). No action
+implementation started before the decisions were settled.
 
 ### S10.1. Provide a setup action — 1–1.5 d
 

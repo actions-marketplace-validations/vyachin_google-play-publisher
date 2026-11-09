@@ -65,6 +65,7 @@ These are platform limits, not gaps in the tool. Accept them before building fur
 | Stateless model, one edit per run, idempotency by version code | [ADR-0002](adr/0002-stateless-single-edit.md) |
 | Never cancel changes in review by default (`ERROR_IF_IN_REVIEW`) | [Architecture](02-architecture.md#5-review-policy) |
 | Cobra with layered `cli → app → play` structure | [Stack](06-stack.md), [ADR-0003](adr/0003-cobra-command-layout.md) |
+| GitHub Actions packaging, version pinning and AAB identity | [ADR-0004](adr/0004-github-actions.md) |
 | CLI contract, exit codes, JSON for CI | [CLI](03-cli-contract.md) |
 | Play Console, GCP, key passing and signing setup | [Setup](04-play-console-setup.md) |
 | Play error catalog and retry policy | [Errors](05-errors.md) |
@@ -80,6 +81,7 @@ These are platform limits, not gaps in the tool. Accept them before building fur
 - [ADR-0001 — Go client and Edits API](adr/0001-androidpublisher-go-client.md)
 - [ADR-0002 — Statelessness and one edit](adr/0002-stateless-single-edit.md)
 - [ADR-0003 — Cobra and layered commands](adr/0003-cobra-command-layout.md)
+- [ADR-0004 — GitHub Actions packaging and AAB identity](adr/0004-github-actions.md)
 - [Development plan](../TODO.md)
 
 External sources the project relies on:
