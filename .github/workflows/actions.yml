@@ -30,7 +30,7 @@ jobs:
         id: setup
         uses: ./setup
         with:
-          version: 0.0.4
+          version: 0.0.5
 
       - name: Check the installed version
         run: |
@@ -68,7 +68,7 @@ jobs:
         env:
           GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
         with:
-          version: 0.0.4
+          version: 0.0.5
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
@@ -109,7 +109,7 @@ jobs:
         env:
           GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
         with:
-          version: 0.0.4
+          version: 0.0.5
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal

@@ -1,13 +1,10 @@
 # 07 — GitHub Actions
 
-**Status:** interface under development. The setup and publish actions are implemented, but no
-release that contains them exists yet. Do not reference `@main` from a production workflow; pin
-the release tag published in S10.6.
+**Status:** released as v0.0.5. The examples pin that release; do not reference `@main` from a
+production workflow.
 
-This guide documents both actions and the workflows they replace. The examples use
-`<release-tag>` and `<cli-version>` placeholders because the first release containing the
-actions is published in S10.6; replace both with the released values and verify the workflow
-against that release before relying on it.
+The action revision and the CLI `version` input are separate; use the same release for both
+unless a workflow intentionally mixes them.
 
 ## Support matrix
 
@@ -27,9 +24,9 @@ Installs a released `google-play-publisher` archive, verifies it against `checks
 adds the binary directory to `PATH`.
 
 ```yaml
-- uses: vyachin/google-play-publisher/setup@<release-tag>
+- uses: vyachin/google-play-publisher/setup@v0.0.5
   with:
-    version: <cli-version>
+    version: 0.0.5
 ```
 
 Inputs:
@@ -59,9 +56,9 @@ Behavior:
 After the setup step, use the CLI directly:
 
 ```yaml
-- uses: vyachin/google-play-publisher/setup@<release-tag>
+- uses: vyachin/google-play-publisher/setup@v0.0.5
   with:
-    version: <cli-version>
+    version: 0.0.5
 
 - name: Check access
   env:
@@ -79,9 +76,9 @@ wrapper around the CLI: input validation, Play calls, retries and exit codes sta
 `google-play-publisher`.
 
 ```yaml
-- uses: vyachin/google-play-publisher@<release-tag>
+- uses: vyachin/google-play-publisher@v0.0.5
   with:
-    version: <cli-version>
+    version: 0.0.5
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
@@ -185,9 +182,9 @@ jobs:
         working-directory: android
         run: ./gradlew :app:bundleRelease --no-daemon
 
-      - uses: vyachin/google-play-publisher/setup@<release-tag>
+      - uses: vyachin/google-play-publisher/setup@v0.0.5
         with:
-          version: <cli-version>
+          version: 0.0.5
 
       - name: Write the service-account key
         env:
@@ -256,9 +253,9 @@ jobs:
 
       - name: Publish to internal
         id: play
-        uses: vyachin/google-play-publisher@<release-tag>
+        uses: vyachin/google-play-publisher@v0.0.5
         with:
-          version: <cli-version>
+          version: 0.0.5
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
@@ -364,7 +361,7 @@ production, the commit may succeed while publication waits for a manual "Publish
 
 ## Action revision and CLI version
 
-The action revision (`@<release-tag>`) and the CLI `version` input are separate coordinates.
+The action revision (`@v0.0.5`) and the CLI `version` input are separate coordinates.
 Pin the action to a release tag, optionally to a commit SHA for stricter supply-chain control,
 and pass the CLI version that the workflow should run. Both must exist as released artifacts.
 The publish action defaults `version` to the action ref only when that ref is a release tag;

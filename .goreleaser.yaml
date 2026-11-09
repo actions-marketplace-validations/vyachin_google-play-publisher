@@ -38,8 +38,8 @@ checksum:
 
 release:
   header: |
-    **Fixed:** AAB uploads declare `application/octet-stream`; content sniffing classified the
-    ZIP-based bundle as `application/zip` and Play rejected it with HTTP 400. No other changes.
+    **Added:** release identity read from the AAB, optional `--version-code`, `--expected-tag`,
+    and GitHub Actions setup/publish actions. See CHANGELOG for details.
 
 changelog:
   sort: asc

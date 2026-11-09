@@ -2,7 +2,7 @@
 
 A Go CLI that publishes a signed Android App Bundle (AAB) to Google Play.
 
-**Status:** v0.0.4. Publishing targets the `internal` track.
+**Status:** v0.0.5. Publishing targets the `internal` track.
 
 ## Installation
 
