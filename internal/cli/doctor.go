@@ -30,6 +30,7 @@ type doctorOutput struct {
 	Command string              `json:"command"`
 	Package string              `json:"package"`
 	Checks  []doctorCheckOutput `json:"checks"`
+	Error   *errorDetail        `json:"error,omitempty"`
 }
 
 func newDoctorCmd(a *App, g *globalFlags) *cobra.Command {
@@ -79,23 +80,32 @@ func runDoctor(cmd *cobra.Command, a *App, g *globalFlags, flags *doctorFlags) e
 	})
 
 	if g.JSON {
-		_ = writeDoctorJSON(a.Stdout, flags.Package, checks, checkErr == nil)
-	} else {
-		printChecks(a.Stdout, checks)
+		if err := writeDoctorJSON(a.Stdout, flags.Package, checks, checkErr); err != nil {
+			return err
+		}
+		if checkErr != nil {
+			return &renderedError{err: checkErr}
+		}
+		return nil
 	}
 
+	printChecks(a.Stdout, checks)
 	return checkErr
 }
 
-func writeDoctorJSON(w io.Writer, pkg string, checks []appcore.Check, ok bool) error {
+func writeDoctorJSON(w io.Writer, pkg string, checks []appcore.Check, checkErr error) error {
 	out := doctorOutput{
-		OK:      ok,
+		OK:      checkErr == nil,
 		Command: "doctor",
 		Package: pkg,
 		Checks:  make([]doctorCheckOutput, 0, len(checks)),
 	}
 	for _, check := range checks {
 		out.Checks = append(out.Checks, doctorCheckOutput{Name: check.Name, OK: check.OK, Detail: check.Detail})
+	}
+	if checkErr != nil {
+		detail := newErrorDetail(checkErr, exitcode.From(checkErr))
+		out.Error = &detail
 	}
 
 	enc := json.NewEncoder(w)

@@ -3,9 +3,11 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/vyachin/google-play-publisher/internal/artifact"
@@ -28,11 +30,13 @@ type PublishOptions struct {
 	Package                 string
 	AABPath                 string
 	MetadataPath            string
+	VersionCode             int64
 	Track                   string
 	Status                  string
 	Rollout                 float64
 	RolloutSet              bool
 	Notes                   map[string]string
+	ReleaseName             string
 	IfExists                release.ExistsPolicy
 	ChangesNotSentForReview bool
 	InReviewBehavior        string
@@ -104,8 +108,8 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 	if err != nil {
 		return PublishResult{}, err
 	}
-	if meta != nil && versionReleased(releases, meta.VersionCode) {
-		return p.alreadyReleased(opts, plan, meta, info)
+	if known := knownVersionCode(opts, meta); known > 0 && versionReleased(releases, known) {
+		return p.alreadyReleased(opts, plan, known, info)
 	}
 
 	editID, err := p.api.CreateEdit(ctx, plan.Package)
@@ -133,10 +137,23 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 	}
 	p.logger.Info("bundle uploaded", "versionCode", bundle.VersionCode, "sha256", bundle.SHA256)
 
+	// The file is reopened after inspection, so verify that Play received the
+	// bytes that were inspected. A replacement would invalidate size and hash.
+	if bundle.SHA256 != "" && !strings.EqualFold(bundle.SHA256, info.SHA256) {
+		return PublishResult{}, exitcode.Errorf(exitcode.Internal,
+			"uploaded bundle sha256 %s does not match the inspected artifact %s; the file changed during the run",
+			bundle.SHA256, info.SHA256)
+	}
+
 	if meta != nil && bundle.VersionCode != meta.VersionCode {
 		return PublishResult{}, exitcode.Errorf(exitcode.Usage,
 			"metadata versionCode %d does not match uploaded versionCode %d",
 			meta.VersionCode, bundle.VersionCode)
+	}
+	if opts.VersionCode > 0 && bundle.VersionCode != opts.VersionCode {
+		return PublishResult{}, exitcode.Errorf(exitcode.Usage,
+			"versionCode %d does not match uploaded versionCode %d",
+			opts.VersionCode, bundle.VersionCode)
 	}
 
 	result := PublishResult{
@@ -144,7 +161,7 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 		Track:       plan.Track,
 		Status:      string(plan.Status),
 		VersionCode: bundle.VersionCode,
-		SHA256:      info.SHA256,
+		SHA256:      uploadedSHA256(info, bundle),
 		EditID:      editID,
 	}
 
@@ -153,6 +170,7 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 		Status:       string(plan.Status),
 		UserFraction: plan.UserFraction,
 		ReleaseNotes: playNotes(plan.Notes),
+		Name:         opts.ReleaseName,
 	}); err != nil {
 		return PublishResult{}, err
 	}
@@ -166,68 +184,86 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 		return result, nil
 	}
 
-	review := reviewOutcome(opts)
+	review, manual, err := p.commit(ctx, opts, plan.Package, plan.Track, editID, bundle.VersionCode)
+	if err != nil {
+		return PublishResult{}, err
+	}
+
+	committed = true
+	result.Review = review
+
+	if manual {
+		p.logger.Info("saved for manual review", "versionCode", bundle.VersionCode, "editId", editID)
+		return result, exitcode.WithHint(
+			exitcode.Errorf(exitcode.ManualAction, "changes saved but not submitted for review"),
+			"open Play Console -> Publishing overview and send the changes for review")
+	}
+
+	p.logger.Info("published", "versionCode", bundle.VersionCode, "review", review)
+	return result, nil
+}
+
+// commit applies the edit. Every ambiguous attempt is reconciled against the
+// track before the publisher decides that it failed, and the reported review
+// outcome always comes from the options actually sent.
+func (p *Publisher) commit(
+	ctx context.Context,
+	opts PublishOptions,
+	pkg, track, editID string,
+	versionCode int64,
+) (review string, manual bool, err error) {
 	commitOpts := play.CommitOptions{
 		ChangesNotSentForReview: opts.ChangesNotSentForReview,
 		InReviewBehavior:        opts.InReviewBehavior,
 	}
+	transientRetried := false
 
-	commitErr := p.api.CommitEdit(ctx, plan.Package, editID, commitOpts)
-	if commitErr == nil {
-		committed = true
-		result.Review = review
-		p.logger.Info("published", "versionCode", bundle.VersionCode, "review", review)
-		return result, nil
-	}
-
-	if exitcode.From(commitErr) == exitcode.ManualAction && !opts.ChangesNotSentForReview {
-		commitOpts.ChangesNotSentForReview = true
-		retryErr := p.api.CommitEdit(ctx, plan.Package, editID, commitOpts)
-		if retryErr == nil {
-			committed = true
-			result.Review = ReviewNotSent
-			return result, nil
+	for {
+		commitErr := p.api.CommitEdit(ctx, pkg, editID, commitOpts)
+		if commitErr == nil {
+			return reviewOutcome(commitOpts), manual, nil
 		}
-		commitErr = retryErr
-	}
 
-	released, verifyErr := p.isReleased(ctx, plan.Package, plan.Track, bundle.VersionCode)
-	if verifyErr == nil && released {
-		committed = true
-		result.Review = review
-		return result, nil
-	}
-	if verifyErr != nil {
-		return PublishResult{}, exitcode.WithHint(commitErr,
-			"commit state is unknown: check the track before retrying")
-	}
-
-	if exitcode.From(commitErr) == exitcode.Transient {
-		retryErr := p.api.CommitEdit(ctx, plan.Package, editID, commitOpts)
-		if retryErr == nil {
-			committed = true
-			result.Review = review
-			return result, nil
+		// Play refuses to submit automatically for some apps; the documented
+		// fallback saves the changes without review and needs a human action.
+		if exitcode.From(commitErr) == exitcode.ManualAction && !commitOpts.ChangesNotSentForReview {
+			commitOpts.ChangesNotSentForReview = true
+			manual = true
+			continue
 		}
-		commitErr = retryErr
-	}
 
-	return PublishResult{}, commitErr
+		released, verifyErr := p.isReleased(ctx, pkg, track, versionCode)
+		if verifyErr != nil {
+			return "", manual, exitcode.WithHint(commitErr, fmt.Sprintf(
+				"commit state is unknown for %s track %s version %d (edit %s): check the track before retrying",
+				pkg, track, versionCode, editID))
+		}
+		if released {
+			return reviewOutcome(commitOpts), manual, nil
+		}
+
+		if exitcode.From(commitErr) == exitcode.Transient && !transientRetried && ctx.Err() == nil {
+			transientRetried = true
+			continue
+		}
+
+		return "", manual, commitErr
+	}
 }
 
 func (p *Publisher) alreadyReleased(
 	opts PublishOptions,
 	plan release.Plan,
-	meta *artifact.Metadata,
+	versionCode int64,
 	info artifact.Info,
 ) (PublishResult, error) {
 	if opts.IfExists == release.ExistsSkip {
-		p.logger.Info("skipped: version already released", "versionCode", meta.VersionCode, "track", plan.Track)
+		p.logger.Info("skipped: version already released", "versionCode", versionCode, "track", plan.Track)
 		return PublishResult{
 			Package:     plan.Package,
 			Track:       plan.Track,
 			Status:      string(plan.Status),
-			VersionCode: meta.VersionCode,
+			VersionCode: versionCode,
 			SHA256:      info.SHA256,
 			Review:      ReviewSkipped,
 		}, nil
@@ -235,7 +271,7 @@ func (p *Publisher) alreadyReleased(
 
 	return PublishResult{}, exitcode.WithHint(
 		exitcode.Errorf(exitcode.Conflict,
-			"versionCode %d is already on track %s", meta.VersionCode, plan.Track),
+			"versionCode %d is already on track %s", versionCode, plan.Track),
 		"bump versionCode and rebuild the AAB, or pass --if-exists=skip",
 	)
 }
@@ -259,6 +295,16 @@ func (p *Publisher) deleteEdit(pkg, editID string) {
 	p.logger.Debug("edit deleted", "editId", editID)
 }
 
+// PackageFromMetadata returns the applicationId declared by AGP metadata. It
+// lets publish run without --package when the sidecar file is supplied.
+func PackageFromMetadata(path string) (string, error) {
+	meta, err := artifact.ReadMetadata(path)
+	if err != nil {
+		return "", err
+	}
+	return meta.ApplicationID, nil
+}
+
 func readMetadata(opts PublishOptions) (*artifact.Metadata, error) {
 	if opts.MetadataPath == "" {
 		return nil, nil
@@ -272,6 +318,27 @@ func readMetadata(opts PublishOptions) (*artifact.Metadata, error) {
 		return nil, err
 	}
 	return &meta, nil
+}
+
+// uploadedSHA256 returns the hash of the bytes Play received, falling back to
+// the locally inspected value when the API omits it.
+// knownVersionCode returns the version code declared by the caller, if any.
+// --version-code wins over metadata because it is the explicit declaration.
+func knownVersionCode(opts PublishOptions, meta *artifact.Metadata) int64 {
+	if opts.VersionCode > 0 {
+		return opts.VersionCode
+	}
+	if meta != nil {
+		return meta.VersionCode
+	}
+	return 0
+}
+
+func uploadedSHA256(info artifact.Info, bundle play.BundleInfo) string {
+	if bundle.SHA256 != "" {
+		return bundle.SHA256
+	}
+	return info.SHA256
 }
 
 func versionReleased(releases []play.ReleaseSummary, versionCode int64) bool {
@@ -293,7 +360,7 @@ func playNotes(notes []release.Note) []play.LocalizedText {
 	return result
 }
 
-func reviewOutcome(opts PublishOptions) string {
+func reviewOutcome(opts play.CommitOptions) string {
 	if opts.ChangesNotSentForReview {
 		return ReviewNotSent
 	}

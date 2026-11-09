@@ -3,6 +3,7 @@ package app_test
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/vyachin/google-play-publisher/internal/app"
+	"github.com/vyachin/google-play-publisher/internal/artifact"
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/play/playtest"
@@ -116,6 +118,40 @@ func TestPublishReleaseNotes(t *testing.T) {
 	}
 }
 
+func TestPublishReleaseName(t *testing.T) {
+	fake := &playtest.Fake{}
+	publisher := app.NewPublisher(fake, nil)
+
+	opts := baseOptions(writeAAB(t))
+	opts.ReleaseName = "1.0.35"
+	if _, err := publisher.Publish(context.Background(), opts); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	if len(fake.UpdatedReleases) != 1 {
+		t.Fatalf("updated releases = %d, want 1", len(fake.UpdatedReleases))
+	}
+	if got := fake.UpdatedReleases[0].Name; got != "1.0.35" {
+		t.Fatalf("release name = %q, want %q", got, "1.0.35")
+	}
+}
+
+func TestPublishWithoutReleaseName(t *testing.T) {
+	fake := &playtest.Fake{}
+	publisher := app.NewPublisher(fake, nil)
+
+	if _, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t))); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+
+	if len(fake.UpdatedReleases) != 1 {
+		t.Fatalf("updated releases = %d, want 1", len(fake.UpdatedReleases))
+	}
+	if got := fake.UpdatedReleases[0].Name; got != "" {
+		t.Fatalf("release name = %q, want empty", got)
+	}
+}
+
 func TestPublishSkipExistingVersion(t *testing.T) {
 	fake := &playtest.Fake{
 		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
@@ -165,6 +201,47 @@ func TestPublishFailExistingVersion(t *testing.T) {
 	}
 }
 
+func TestPublishSkipWithVersionCode(t *testing.T) {
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	opts := baseOptions(writeAAB(t))
+	opts.VersionCode = 42
+	opts.IfExists = "skip"
+
+	result, err := publisher.Publish(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if result.Review != app.ReviewSkipped || result.VersionCode != 42 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if contains(fake.Calls, "CreateEdit") {
+		t.Fatal("edit must not be created when the version is skipped")
+	}
+}
+
+func TestPublishFailExistingVersionWithVersionCode(t *testing.T) {
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	opts := baseOptions(writeAAB(t))
+	opts.VersionCode = 42
+
+	_, err := publisher.Publish(context.Background(), opts)
+	if got := exitcode.From(err); got != exitcode.Conflict {
+		t.Fatalf("code = %d, want %d", got, exitcode.Conflict)
+	}
+}
+
 func TestPublishDryRun(t *testing.T) {
 	fake := &playtest.Fake{}
 	publisher := app.NewPublisher(fake, nil)
@@ -202,8 +279,85 @@ func TestPublishRetriesManualReview(t *testing.T) {
 	publisher := app.NewPublisher(fake, nil)
 
 	result, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
-	if err != nil {
-		t.Fatalf("Publish: %v", err)
+	if err == nil {
+		t.Fatal("expected the manual-action error")
+	}
+	if got := exitcode.From(err); got != exitcode.ManualAction {
+		t.Fatalf("code = %d, want %d", got, exitcode.ManualAction)
+	}
+	if result.Review != app.ReviewNotSent {
+		t.Fatalf("review = %q, want %q", result.Review, app.ReviewNotSent)
+	}
+	if result.VersionCode != 42 || result.EditID != "edit-1" {
+		t.Fatalf("saved release is not reported: %#v", result)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("committed edit must not be deleted: %v", fake.DeletedEditIDs)
+	}
+	if len(fake.CommitOptions) != 2 {
+		t.Fatalf("commit attempts = %d, want 2", len(fake.CommitOptions))
+	}
+	if !fake.CommitOptions[1].ChangesNotSentForReview {
+		t.Fatal("retry must set changesNotSentForReview")
+	}
+}
+
+func TestPublishManualReviewAfterTransientRetry(t *testing.T) {
+	attempts := 0
+	fake := &playtest.Fake{
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			attempts++
+			switch attempts {
+			case 1:
+				return exitcode.Errorf(exitcode.ManualAction, "changes cannot be sent for review automatically")
+			case 2:
+				return exitcode.Errorf(exitcode.Transient, "timeout")
+			default:
+				return nil
+			}
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	result, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if got := exitcode.From(err); got != exitcode.ManualAction {
+		t.Fatalf("code = %d, want %d (err: %v)", got, exitcode.ManualAction, err)
+	}
+	if result.Review != app.ReviewNotSent {
+		t.Fatalf("review = %q, want %q: the successful commit saved without review", result.Review, app.ReviewNotSent)
+	}
+	if len(fake.CommitOptions) != 3 {
+		t.Fatalf("commit attempts = %d, want 3", len(fake.CommitOptions))
+	}
+	if !fake.CommitOptions[2].ChangesNotSentForReview {
+		t.Fatal("the third attempt must keep changesNotSentForReview")
+	}
+}
+
+func TestPublishManualReviewVerifiedWithoutReview(t *testing.T) {
+	attempts := 0
+	releases := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			releases++
+			if releases == 1 {
+				return nil, nil // preflight
+			}
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			attempts++
+			if attempts == 1 {
+				return exitcode.Errorf(exitcode.ManualAction, "changes cannot be sent for review automatically")
+			}
+			return exitcode.Errorf(exitcode.Transient, "timeout")
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	result, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if got := exitcode.From(err); got != exitcode.ManualAction {
+		t.Fatalf("code = %d, want %d (err: %v)", got, exitcode.ManualAction, err)
 	}
 	if result.Review != app.ReviewNotSent {
 		t.Fatalf("review = %q, want %q", result.Review, app.ReviewNotSent)
@@ -211,8 +365,69 @@ func TestPublishRetriesManualReview(t *testing.T) {
 	if len(fake.CommitOptions) != 2 {
 		t.Fatalf("commit attempts = %d, want 2", len(fake.CommitOptions))
 	}
-	if !fake.CommitOptions[1].ChangesNotSentForReview {
-		t.Fatal("retry must set changesNotSentForReview")
+}
+
+func TestPublishVerifiesFinalTransientRetry(t *testing.T) {
+	releases := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			releases++
+			if releases <= 2 {
+				return nil, nil // preflight and the first reconciliation
+			}
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			return exitcode.Errorf(exitcode.Transient, "timeout")
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	result, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if result.Review != app.ReviewSent || result.EditID != "edit-1" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if len(fake.CommitOptions) != 2 {
+		t.Fatalf("commit attempts = %d, want 2", len(fake.CommitOptions))
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("reconciled release must not delete the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPublishUnknownCommitState(t *testing.T) {
+	releases := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			releases++
+			if releases == 1 {
+				return nil, nil
+			}
+			return nil, exitcode.Errorf(exitcode.Transient, "network down")
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			return exitcode.Errorf(exitcode.Transient, "timeout")
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	_, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := exitcode.From(err); got != exitcode.Transient {
+		t.Fatalf("code = %d, want %d", got, exitcode.Transient)
+	}
+
+	var coded *exitcode.Error
+	if !errors.As(err, &coded) || !strings.Contains(coded.Hint, "state is unknown") {
+		t.Fatalf("expected the unknown-state hint, got %v", err)
+	}
+	if len(fake.CommitOptions) != 1 {
+		t.Fatalf("commit attempts = %d, want 1", len(fake.CommitOptions))
 	}
 }
 
@@ -296,6 +511,55 @@ func TestPublishMetadataVersionMismatch(t *testing.T) {
 	}
 	if got := exitcode.From(err); got != exitcode.Usage {
 		t.Fatalf("code = %d, want %d", got, exitcode.Usage)
+	}
+}
+
+func TestPublishUploadedHashMismatch(t *testing.T) {
+	fake := &playtest.Fake{
+		UploadBundleFunc: func(context.Context, string, string, io.Reader, int64) (play.BundleInfo, error) {
+			return play.BundleInfo{VersionCode: 42, SHA256: strings.Repeat("0", 64)}, nil
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	_, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := exitcode.From(err); got != exitcode.Internal {
+		t.Fatalf("code = %d, want %d", got, exitcode.Internal)
+	}
+	if contains(fake.Calls, "UpdateTrack") {
+		t.Fatal("a hash mismatch must stop before tracks.update")
+	}
+	if len(fake.DeletedEditIDs) != 1 {
+		t.Fatalf("edit must be deleted: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPublishUploadedHashMatches(t *testing.T) {
+	aab := writeAAB(t)
+	info, err := artifact.Inspect(aab)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+
+	fake := &playtest.Fake{
+		UploadBundleFunc: func(context.Context, string, string, io.Reader, int64) (play.BundleInfo, error) {
+			return play.BundleInfo{VersionCode: 42, SHA256: strings.ToUpper(info.SHA256)}, nil
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	result, err := publisher.Publish(context.Background(), baseOptions(aab))
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if result.SHA256 != strings.ToUpper(info.SHA256) {
+		t.Fatalf("result sha256 = %q, want the uploaded hash", result.SHA256)
+	}
+	if !contains(fake.Calls, "UpdateTrack") {
+		t.Fatalf("matching hashes must continue: %v", fake.Calls)
 	}
 }
 

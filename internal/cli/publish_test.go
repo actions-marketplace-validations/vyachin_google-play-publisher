@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -98,6 +99,23 @@ func TestPublishJSON(t *testing.T) {
 	}
 	if got["versionCode"] != float64(42) {
 		t.Fatalf("versionCode = %v", got["versionCode"])
+	}
+}
+
+func TestPublishPackageFromMetadata(t *testing.T) {
+	out, errOut, code := runWithAPI(t, &playtest.Fake{}, "--json", "publish",
+		"-f", writeAAB(t), "--metadata", writeMetadata(t, 42))
+
+	if code != int(exitcode.OK) {
+		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not JSON: %v (%q)", err, out)
+	}
+	if got["package"] != "com.example.app" {
+		t.Fatalf("package = %v, want the metadata applicationId", got["package"])
 	}
 }
 
@@ -244,20 +262,112 @@ func TestPublishIncompatibleFlags(t *testing.T) {
 	}
 }
 
-func TestPublishInvalidNotesFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "notes.json")
-	if err := os.WriteFile(path, []byte(`{"en-US":`), 0o600); err != nil {
-		t.Fatalf("write notes: %v", err)
-	}
+func writeChangelog(t *testing.T, root, locale string, versionCode int64, text string) {
+	t.Helper()
 
+	dir := filepath.Join(root, locale, "changelogs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create changelog dir: %v", err)
+	}
+	path := filepath.Join(dir, strconv.FormatInt(versionCode, 10)+".txt")
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatalf("write changelog: %v", err)
+	}
+}
+
+func TestPublishRejectsReleaseNotesFlag(t *testing.T) {
 	_, errOut, code := runWithAPI(t, &playtest.Fake{}, "publish",
-		"-p", "com.example.app", "-f", writeAAB(t), "--release-notes", path)
+		"-p", "com.example.app", "-f", writeAAB(t), "--release-notes", "notes.json")
 
 	if code != int(exitcode.Usage) {
 		t.Fatalf("code = %d, want %d", code, exitcode.Usage)
 	}
-	if !strings.Contains(errOut, "parse") {
+	if !strings.Contains(errOut, "unknown flag") {
 		t.Fatalf("unexpected stderr: %q", errOut)
+	}
+}
+
+func TestPublishChangelogDirRequiresVersionCode(t *testing.T) {
+	_, errOut, code := runWithAPI(t, &playtest.Fake{}, "publish",
+		"-p", "com.example.app", "-f", writeAAB(t), "--changelog-dir", t.TempDir())
+
+	if code != int(exitcode.Usage) {
+		t.Fatalf("code = %d, want %d", code, exitcode.Usage)
+	}
+	if !strings.Contains(errOut, "--version-code is required") {
+		t.Fatalf("unexpected stderr: %q", errOut)
+	}
+}
+
+func TestPublishMissingChangelog(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "ru-RU", "changelogs"), 0o755); err != nil {
+		t.Fatalf("create changelog dir: %v", err)
+	}
+
+	_, errOut, code := runWithAPI(t, &playtest.Fake{}, "publish",
+		"-p", "com.example.app", "-f", writeAAB(t),
+		"--changelog-dir", root, "--version-code", "42")
+
+	if code != int(exitcode.Usage) {
+		t.Fatalf("code = %d, want %d", code, exitcode.Usage)
+	}
+	if !strings.Contains(errOut, "no changelog for versionCode 42") || !strings.Contains(errOut, "42.txt") {
+		t.Fatalf("unexpected stderr: %q", errOut)
+	}
+}
+
+func TestPublishChangelogNotes(t *testing.T) {
+	root := t.TempDir()
+	writeChangelog(t, root, "ru-RU", 42, "Исправления ошибок")
+	writeChangelog(t, root, "en-US", 42, "Bug fixes")
+
+	fake := &playtest.Fake{}
+	_, errOut, code := runWithAPI(t, fake, "publish",
+		"-p", "com.example.app", "-f", writeAAB(t),
+		"--changelog-dir", root, "--version-code", "42")
+
+	if code != int(exitcode.OK) {
+		t.Fatalf("code = %d, want %d, stderr: %q", code, exitcode.OK, errOut)
+	}
+	if len(fake.UpdatedReleases) != 1 {
+		t.Fatalf("track updates = %d, want 1", len(fake.UpdatedReleases))
+	}
+
+	got := fake.UpdatedReleases[0].ReleaseNotes
+	if len(got) != 2 {
+		t.Fatalf("release notes = %#v, want 2 locales", got)
+	}
+	if got[0].Language != "en-US" || got[0].Text != "Bug fixes" {
+		t.Fatalf("first note = %#v, want en-US", got[0])
+	}
+	if got[1].Language != "ru-RU" || got[1].Text != "Исправления ошибок" {
+		t.Fatalf("second note = %#v, want ru-RU", got[1])
+	}
+}
+
+func TestPublishVersionCodeMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeChangelog(t, root, "ru-RU", 42, "Исправления ошибок")
+
+	fake := &playtest.Fake{
+		UploadBundleFunc: func(context.Context, string, string, io.Reader, int64) (play.BundleInfo, error) {
+			return play.BundleInfo{VersionCode: 43}, nil
+		},
+	}
+
+	_, errOut, code := runWithAPI(t, fake, "publish",
+		"-p", "com.example.app", "-f", writeAAB(t),
+		"--changelog-dir", root, "--version-code", "42")
+
+	if code != int(exitcode.Usage) {
+		t.Fatalf("code = %d, want %d", code, exitcode.Usage)
+	}
+	if !strings.Contains(errOut, "does not match uploaded versionCode 43") {
+		t.Fatalf("unexpected stderr: %q", errOut)
+	}
+	if len(fake.DeletedEditIDs) == 0 {
+		t.Fatal("edit was not cleaned up after the version mismatch")
 	}
 }
 

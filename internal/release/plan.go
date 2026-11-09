@@ -2,6 +2,7 @@
 package release
 
 import (
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -88,7 +89,7 @@ func NewPlan(in Input) (Plan, error) {
 }
 
 func resolveStatus(raw string, rollout float64, rolloutSet bool) (Status, error) {
-	if rolloutSet && (rollout <= 0 || rollout >= 1) {
+	if rolloutSet && (math.IsNaN(rollout) || math.IsInf(rollout, 0) || rollout <= 0 || rollout >= 1) {
 		return "", exitcode.Errorf(exitcode.Usage,
 			"--rollout must be between 0 and 1 (exclusive), got %v", rollout)
 	}

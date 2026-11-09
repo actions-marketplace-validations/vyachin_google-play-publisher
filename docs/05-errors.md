@@ -19,18 +19,28 @@ if errors.As(err, &gerr) {
 
 Classification uses three signals in priority order:
 
-1. transport (network, timeout, 5xx);
+1. transport (network, timeout, 5xx) and token retrieval;
 2. HTTP status;
 3. `reason` and message text (for Play validation rejections).
 
 Message text is only a fallback and is matched by stable fragments, because Play changes
 wording.
 
+Transport failures arrive as plain `net`/`url` errors, not `googleapi.Error`:
+`context.DeadlineExceeded`, `io.EOF`, `io.ErrUnexpectedEOF`, `ECONNRESET` and network
+timeouts map to exit code 6; `context.Canceled` maps to 130. Token retrieval failures arrive
+as `*oauth2.RetrieveError`: a 4xx answer from the token endpoint is an authentication
+problem (3), a network failure or 5xx answer is transient (6).
+
 ## 2. Error catalog
 
 | HTTP | Marker | Cause | Exit code | Retry | Action |
 | --- | --- | --- | --- | --- | --- |
 | — | `context.DeadlineExceeded`, `io.EOF`, `ECONNRESET` | Network/timeout | 6 | Yes | Rerun |
+| — | `context.Canceled` | Interrupted by a signal | 130 | No | Rerun |
+| — | `*oauth2.RetrieveError` with 4xx | Token endpoint rejected the credentials | 3 | No | Check the key, its scopes and the account |
+| — | `*oauth2.RetrieveError` without a response, or 5xx | Token endpoint unreachable | 6 | Yes | Rerun |
+| — | uploaded `sha256` differs from the inspected file | The AAB changed between inspection and upload | 1 | No | Rebuild and rerun without touching the file |
 | 500/502/503/504 | — | Play failure | 6 | Yes | Retry, then escalate |
 | 429 | `rateLimitExceeded` | Per-minute limit exceeded | 6 | Yes, with `Retry-After` | Wait |
 | 401 | `UNAUTHENTICATED` | Token not obtained/expired | 3 | No | Check credentials |
@@ -79,13 +89,29 @@ error that is easy to mistake for a failure.
 Algorithm:
 
 ```
-commit → error (timeout/5xx)?
-  → request track releases (read-only)
-  → versionCode present?
-      yes → success (review: sent/unknown), code 0
-      no  → retry commit once (if the error is not about an invalid edit)
-              → error again → code 6, attach editId
+commit → error?
+  → "changes cannot be sent for review automatically"?
+      → retry once with changesNotSentForReview=true
+         success → saved; review=notSent; exit code 8
+  → otherwise request track releases (read-only)
+      versionCode present?
+          yes → success; review comes from the options of the request
+                actually sent; exit code 0
+          no  → retry commit once if the error is transient
+                (not for an invalid edit, not after a canceled context)
+                  → verify again
+                      versionCode present → success, code 0
+                      still absent → code 6, attach editId
 ```
+
+Every ambiguous attempt is reconciled before the tool decides that it failed: a retry that
+the server applied but whose response was lost is recognized by the following read and the
+edit is not deleted.
+
+The reported `review` value always comes from the `commit` options that were actually used —
+including the automatic `changesNotSentForReview=true` fallback and ambiguous attempts
+resolved by verification. An automatic fallback that saved the changes returns code 8 even
+when the retry itself succeeded; an explicit `--changes-not-sent-for-review` returns 0.
 
 If the state check itself is unavailable (network), the tool returns code 6 and does **not**
 claim that the publication failed: the message says "state unknown, check the track".

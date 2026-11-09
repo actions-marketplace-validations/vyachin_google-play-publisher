@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -23,7 +22,9 @@ type publishFlags struct {
 	Track                   string
 	Status                  string
 	Rollout                 float64
-	NotesPath               string
+	ChangelogDir            string
+	VersionCode             int64
+	ReleaseName             string
 	ChangesNotSentForReview bool
 	OnInReview              string
 	IfExists                string
@@ -74,7 +75,9 @@ the edit. The default track is "internal".`,
 	f.StringVarP(&flags.Track, "track", "t", "internal", "release track")
 	f.StringVar(&flags.Status, "status", "completed", "release status: draft, inProgress or completed")
 	f.Float64Var(&flags.Rollout, "rollout", 0, "staged rollout fraction between 0 and 1")
-	f.StringVar(&flags.NotesPath, "release-notes", "", "JSON file with localized release notes")
+	f.StringVar(&flags.ChangelogDir, "changelog-dir", "", "directory with <locale>/changelogs/<versionCode>.txt release notes")
+	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code used to look up changelog files and verify the upload")
+	f.StringVar(&flags.ReleaseName, "release-name", "", "release name shown in Play Console")
 	f.BoolVar(&flags.ChangesNotSentForReview, "changes-not-sent-for-review", false,
 		"save changes without sending them for review")
 	f.StringVar(&flags.OnInReview, "on-in-review", "error", "behavior when changes are in review: error or replace")
@@ -86,6 +89,15 @@ the edit. The default track is "internal".`,
 }
 
 func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags) error {
+	if flags.Package == "" && flags.Metadata != "" {
+		pkg, err := appcore.PackageFromMetadata(flags.Metadata)
+		if err != nil {
+			return err
+		}
+		if err := cmd.Flags().Set("package", pkg); err != nil {
+			return exitcode.Wrap(exitcode.Usage, err)
+		}
+	}
 	if flags.Package == "" {
 		return exitcode.Errorf(exitcode.Usage, "--package is required")
 	}
@@ -107,7 +119,14 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		return err
 	}
 
-	notes, err := readReleaseNotes(flags.NotesPath)
+	if cmd.Flags().Changed("version-code") && flags.VersionCode <= 0 {
+		return exitcode.Errorf(exitcode.Usage, "--version-code must be positive, got %d", flags.VersionCode)
+	}
+	if flags.ChangelogDir != "" && flags.VersionCode <= 0 {
+		return exitcode.Errorf(exitcode.Usage, "--version-code is required with --changelog-dir")
+	}
+
+	notes, err := readChangelogDir(flags.ChangelogDir, flags.VersionCode)
 	if err != nil {
 		return err
 	}
@@ -132,17 +151,24 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		Package:                 flags.Package,
 		AABPath:                 flags.AAB,
 		MetadataPath:            flags.Metadata,
+		VersionCode:             flags.VersionCode,
 		Track:                   flags.Track,
 		Status:                  status,
 		Rollout:                 flags.Rollout,
 		RolloutSet:              cmd.Flags().Changed("rollout"),
 		Notes:                   notes,
+		ReleaseName:             flags.ReleaseName,
 		IfExists:                exists,
 		ChangesNotSentForReview: flags.ChangesNotSentForReview,
 		InReviewBehavior:        inReview,
 		DryRun:                  flags.DryRun,
 	})
 	if err != nil {
+		// A manual-review fallback saves the release and still needs exit
+		// code 8, so the saved result must be reported before the error.
+		if exitcode.From(err) == exitcode.ManualAction && result.VersionCode != 0 {
+			return reportManualAction(a, g, result, time.Since(start), err)
+		}
 		return err
 	}
 
@@ -151,6 +177,20 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 	}
 	printPublish(a.Stdout, result)
 	return nil
+}
+
+// reportManualAction prints the saved release and keeps the manual-action exit
+// code. In JSON mode the success object is the only object on stdout.
+func reportManualAction(a *App, g *globalFlags, result appcore.PublishResult, duration time.Duration, err error) error {
+	if g.JSON {
+		if writeErr := writePublishJSON(a.Stdout, result, duration); writeErr != nil {
+			return writeErr
+		}
+		return &renderedError{err: err}
+	}
+
+	printPublish(a.Stdout, result)
+	return err
 }
 
 func parseInReview(raw string) (string, error) {
@@ -163,27 +203,6 @@ func parseInReview(raw string) (string, error) {
 		return "", exitcode.Errorf(exitcode.Usage,
 			"invalid --on-in-review %q: want error or replace", raw)
 	}
-}
-
-func readReleaseNotes(path string) (map[string]string, error) {
-	if path == "" {
-		return nil, nil
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, exitcode.WithHint(
-			exitcode.Wrap(exitcode.Usage, err),
-			"check the path passed to --release-notes",
-		)
-	}
-
-	var notes map[string]string
-	if err := json.Unmarshal(data, &notes); err != nil {
-		return nil, exitcode.Wrap(exitcode.Usage,
-			fmt.Errorf("parse %s: %w", path, err))
-	}
-	return notes, nil
 }
 
 func writePublishJSON(w io.Writer, result appcore.PublishResult, duration time.Duration) error {
@@ -216,6 +235,9 @@ func printPublish(w io.Writer, result appcore.PublishResult) {
 			result.VersionCode, result.Package, result.Track)
 	case appcore.ReviewValidated:
 		_, _ = fmt.Fprintf(w, "validated %s version %d for %s (dry run, edit %s deleted)\n",
+			result.Package, result.VersionCode, result.Track, result.EditID)
+	case appcore.ReviewNotSent:
+		_, _ = fmt.Fprintf(w, "saved %s version %d to %s without sending it for review (edit %s)\n",
 			result.Package, result.VersionCode, result.Track, result.EditID)
 	default:
 		_, _ = fmt.Fprintf(w, "published %s version %d to %s (%s, review %s)\n",

@@ -28,6 +28,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S6 | CLI polish | 0.5–1 d | UX/help/completion |
 | S7 | Quality and CI | 1–1.5 d | Green pipeline, integration run |
 | S8 | v0.1 release | 0.5–1 d | Binaries and instructions |
+| S8.1 | v0.0.2: Gunclub migration (notes from changelogs, release name) | 1–1.5 d | v0.0.2 published with `--changelog-dir` |
 | S9 | After the MVP | 3–5 d | `rollout`/`promote` |
 
 **Up to v0.1: 9–12 working days + 20% buffer.**
@@ -190,3 +191,222 @@ reproducible manually.
 - [x] Tests, lint, `-race`, `govulncheck` are green.
 - [x] Release binaries build with goreleaser.
 - [x] Documentation in `docs/` matches the implementation.
+
+## Code review — 2026-11-09 [unplanned]
+
+Scope: Go implementation, tests, CLI/error contracts, and CI/release configuration.
+`make fmt`, `make lint`, `make test` and `make test-race` passed. Temporary characterization tests
+reproduced the ten findings below and were removed after review. No production code
+was changed. Real Play publication was not exercised; S0/live verification remains open.
+P1 means high priority because CI can make the wrong decision; P2 means normal priority.
+Each fix must include regression tests and update the matching document in `docs/`.
+Status 2026-11-09: R1, R2, R3, R4, R5, R6, R8, R10, I2 and I4 are fixed with regression
+tests; R7, R9, I1 and I3 remain open. The fixes are listed in the v0.0.2 section of
+[CHANGELOG.md](CHANGELOG.md).
+
+### Confirmed findings
+
+- [x] **R1 — P1: Classify transport failures as transient errors.**
+  Location: [internal/play/errors.go](internal/play/errors.go), `mapError`.
+  Every error other than `*googleapi.Error` becomes `Internal` (1), including
+  `context.DeadlineExceeded`, `io.EOF`, and `io.ErrUnexpectedEOF` (reproduced).
+  This violates [the error catalog](docs/05-errors.md#2-error-catalog), prevents
+  the transient commit retry, and gives CI the wrong recovery signal.
+  Classify wrapped network/timeout errors with `errors.Is`/`errors.As`, preserve
+  cancellation semantics, and distinguish token retrieval failures from API failures.
+  Acceptance: timeout/EOF/reset errors return 6; authentication failures return 3;
+  SIGINT/SIGTERM still return 130; ambiguous network commit failures use verification.
+
+- [x] **R2 — P1: Return the documented manual-action exit code after saving changes.**
+  Locations: [internal/app/publish.go](internal/app/publish.go), manual-review
+  fallback; [internal/cli/publish.go](internal/cli/publish.go), `runPublish`.
+  When the first commit requires manual review and the retry with
+  `changesNotSentForReview=true` succeeds, the command returns 0 with
+  `review=notSent` (reproduced). The contract requires 8 so CI can detect that
+  a person must submit the saved changes.
+  Preserve the committed result while returning a typed manual-action outcome;
+  do not delete a successfully committed edit.
+  Acceptance: this fallback returns 8, includes the saved version/edit in output,
+  and explains the Play Console action. Cover explicit save-without-review behavior
+  against [the exit-code contract](docs/03-cli-contract.md#4-exit-codes) as well.
+
+- [x] **R3 — P1: Implement the JSON error contract.**
+  Locations: [internal/cli/root.go](internal/cli/root.go), `Execute`;
+  [internal/play/errors.go](internal/play/errors.go), `mapError`.
+  `--json publish` with missing arguments returns an empty stdout and text stderr
+  (reproduced); API failures in publish/status also bypass JSON rendering.
+  Doctor failures can contain checks but omit the contracted `error` object.
+  Moreover, mapping Google errors drops structured API code/reason information.
+  Add one error-rendering path and retain structured error metadata, following
+  [the JSON schema](docs/03-cli-contract.md#5-json-result).
+  Acceptance: usage, authentication, API and interrupted failures produce exactly
+  one JSON object with stable `error.code`, `error.exitCode`, message and hint;
+  API code/reason are retained when available; doctor does not emit two objects.
+
+- [x] **R4 — P2: Resolve the package from metadata as documented.**
+  Location: [internal/cli/publish.go](internal/cli/publish.go), the initial required
+  package check; [internal/app/publish.go](internal/app/publish.go), preflight order.
+  The [publish flag contract](docs/03-cli-contract.md#2-commands) makes `--package`
+  optional when metadata supplies `applicationId`. With a valid AAB and valid
+  metadata but no `--package`, the CLI still returns usage code 2 and
+  `--package is required` (reproduced).
+  Read metadata and resolve the effective package before required-field/plan
+  validation; retain the mismatch check when the package is explicitly supplied.
+  Acceptance: metadata-only package selection succeeds, explicit mismatches fail
+  locally, and omitting both metadata and package remains a usage error.
+
+- [x] **R5 — P2: Report review state from the effective commit options.**
+  Location: [internal/app/publish.go](internal/app/publish.go), lines assigning
+  `result.Review` after verification or a transient retry.
+  `review` is computed before the manual-action fallback changes
+  `commitOpts.ChangesNotSentForReview`. The sequence manual-action error → transient
+  error → successful retry reports `review=sent` although the successful request
+  used `changesNotSentForReview=true` (reproduced).
+  Derive the outcome from the options actually used, including verified ambiguous
+  outcomes, and preserve the manual-action exit code.
+  Acceptance: test both successful verification and a third successful commit
+  after switching to save-without-review; neither can report `sent` or `replaced`.
+
+- [x] **R6 — P2: Verify an ambiguous final commit attempt.**
+  Location: [internal/app/publish.go](internal/app/publish.go), final transient
+  commit retry and error return.
+  If the first commit fails without applying changes and the retry applies them
+  but loses its response, no second state check occurs. The CLI returns failure
+  and attempts edit cleanup even though the release was saved (reproduced).
+  Reconcile every ambiguous attempt before deciding the outcome. If verification
+  is unavailable, report an unknown state with package, track, version and edit ID.
+  Acceptance: a retry applied by the server but returning an error is recognized
+  by a final read; successful reconciliation never attempts edit deletion.
+
+- [ ] **R7 — P2: Keep debug body capture transparent on read errors.**
+  Location: [internal/play/transport.go](internal/play/transport.go), `captureBody`.
+  If `io.ReadAll` consumes bytes and returns an error, the function returns the
+  already-consumed original reader. A body returning JSON bytes together with
+  `io.ErrUnexpectedEOF` becomes an empty reader with a clean EOF (reproduced).
+  Debug mode can therefore change payloads and hide the original transport error.
+  Use a bounded observing reader or replay captured bytes while preserving the
+  error and the original body's close semantics.
+  Acceptance: debug on/off deliver the same bytes and read error for partial reads;
+  the body is closed correctly and capture never relies solely on Content-Length
+  to enforce its memory bound.
+
+- [x] **R8 — P2: Reject NaN rollout fractions locally.**
+  Location: [internal/release/plan.go](internal/release/plan.go), `resolveStatus`.
+  Both comparisons with NaN are false, so a NaN fraction passes validation and
+  produces an `inProgress` plan (reproduced). The subsequent request cannot encode
+  this JSON number, after publication setup has already begun.
+  Explicitly reject non-finite fractions and keep the existing exclusive bounds.
+  Acceptance: NaN, positive/negative infinity, zero and one return usage errors
+  before API construction or any mutation; valid fractions still work.
+
+- [ ] **R9 — P2: Run local publish preflight before constructing the API client.**
+  Location: [internal/cli/publish.go](internal/cli/publish.go), `runPublish`.
+  Plan, AAB and metadata validation happen inside `Publisher.Publish`, after
+  `newAPIClient`. With invalid local input and unavailable credentials, the command
+  returns authentication code 3 instead of usage code 2 (reproduced with an injected
+  failing factory). ADC discovery can also perform unnecessary external work.
+  Expose an app-layer preflight and construct the client only after it succeeds,
+  preserving the injected factory and the repository's layering.
+  Acceptance: malformed package/track/status/notes, invalid AAB and mismatched
+  metadata never invoke the API factory, including when credentials are unavailable.
+
+- [x] **R10 — P2: Propagate doctor JSON output failures.**
+  Location: [internal/cli/doctor.go](internal/cli/doctor.go), `runDoctor`.
+  The return value of `writeDoctorJSON` is discarded. A stdout writer returning
+  `io.ErrClosedPipe` still produces exit code 0 when all checks pass (reproduced).
+  Return the output error when checks succeed; define precedence when both checks
+  and output fail. Audit the equivalent ignored writes in human-readable output.
+  Acceptance: a failed JSON write returns nonzero and a diagnostic, consistently
+  with the publish/status JSON writers.
+
+### Additional improvements
+
+- [ ] **I1 — P2: Implement the documented bounded retry policy.**
+  The ordinary API methods in [internal/play/client.go](internal/play/client.go)
+  issue one `.Do()` call; inspection of the pinned generated client shows a single
+  `SendRequest` for ordinary requests. There is no application backoff or
+  `Retry-After` handling. Chunk retries and the special commit retry cover only
+  part of [the retry policy](docs/05-errors.md#3-retry-policy).
+  Add context-aware retries for the documented safely repeatable operations,
+  honoring limits and `Retry-After`; keep commit reconciliation separate.
+  Validate with httptest sequences 503 → success, 429 with Retry-After, exhaustion,
+  cancellation and non-retryable validation errors. Avoid real sleeps in tests.
+
+- [x] **I2 — P2: Bind inspection and upload to the same artifact bytes.**
+  [internal/artifact/artifact.go](internal/artifact/artifact.go) closes the file
+  after inspection, and publish later reopens its path. A rebuild/replacement
+  between those steps can upload different bytes while reporting the old size/hash.
+  Use a stable artifact snapshot or verify the uploaded hash against the inspected
+  bytes and reject a mismatch before committing. Add a file-replacement scenario.
+
+- [ ] **I3 — P2: Keep release readiness and live verification evidence accurate.**
+  Several completed DoD items above refer to behavior contradicted by this review,
+  and the S8 DoD requires publication on a test app while S0/live runs remain open.
+  [internal/play/live_test.go](internal/play/live_test.go) currently covers only
+  create/read/delete, not upload/update/validate/commit. Separate local/fake gates
+  from live gates and record evidence for each. Extend the opt-in live test against
+  a dedicated test app when access and a signed test AAB are available.
+
+- [x] **I4 — P2: Clarify the metadata prerequisite for idempotent skip.**
+  [README.md](README.md) and the CLI contract advertise `--if-exists=skip` as an
+  idempotent rerun, while [the architecture document](docs/02-architecture.md#6-idempotency-and-recovery)
+  explicitly allows duplicate-upload code 5 without metadata. The implementation
+  only checks existing versions when metadata is supplied; a fake-API probe
+  confirmed that skip without metadata still enters the upload/update/commit path.
+  Reconcile these contracts: document/enforce the metadata prerequisite or resolve
+  identity from the AAB so skip also works without the sidecar. Test both variants.
+
+## S8.1. v0.0.2 — Gunclub release pipeline migration [unplanned]
+
+Context: the Gunclub repository (a separate checkout) replaces Fastlane with this tool. The
+contract is the OpenSpec change `android/openspec/changes/replace-fastlane-with-go-publisher/`
+there: read `design.md` (decisions D2 and D5) and `tasks.md` (group 1) before starting.
+Gunclub's `.github/workflows/android.yml` needs the flags below, so v0.0.2 must be published
+before that workflow switch is committed.
+
+Task 1.1 of that change is implemented and committed (breaking CLI change, see the v0.0.2
+section of [CHANGELOG.md](CHANGELOG.md)): `--release-notes` and its JSON reader are removed;
+`--changelog-dir DIR` and `--version-code N` read
+`<DIR>/<locale>/changelogs/<versionCode>.txt` before any edit is created, reject empty or
+too long files with code 2 and the file path, and compare the uploaded bundle's version code
+with `--version-code`; tests cover missing, empty and long files, two locales, a version-code
+mismatch, the removed flag (unknown flag, code 2) and publishing without notes.
+
+- [x] **M1 — P1: Add `--release-name`.**
+  Pass the value to `tracks.update` through `play.Release.Name`, which the adapter already
+  sends. An empty value must keep today's behavior (no release name).
+  Acceptance: `publish --release-name 1.0.35` sends `1.0.35`; without the flag the release name
+  stays empty; tests cover both.
+
+- [x] **M2 — P1: Document the single release-notes source.**
+  Files: [docs/03-cli-contract.md](docs/03-cli-contract.md) (flag table, examples, `--dry-run`
+  note), [README.md](README.md) (Quick start, release notes), [CHANGELOG.md](CHANGELOG.md)
+  (mark the removal of `--release-notes` as breaking, which is allowed in 0.x),
+  [docs/02-architecture.md](docs/02-architecture.md) (the `--metadata` prerequisite) and
+  `docs/README.md` (close the "Remaining questions" item about the notes format).
+  Two corrections came out of the Gunclub migration and belong in the docs: AGP does not write
+  `build/outputs/bundle/<variant>/output-metadata.json` for `bundleRelease` (the listing file
+  stays under `build/intermediates/bundle_ide_model/...`), so `--metadata` must not be
+  advertised for AAB publishing; and `--dry-run` really uploads the bundle, so its version code
+  may stay used after the edit is deleted.
+  Acceptance: `grep -rn -- "--release-notes" docs README.md` is empty and `CHANGELOG.md`
+  mentions the removal only as a breaking change; the docs describe `--changelog-dir`,
+  `--version-code` and `--release-name`; `make lint` is clean and every link in
+  `docs/README.md` still resolves.
+
+- [x] **M3 — P1: Run the local gate.**
+  `make fmt`, `make lint`, `make test`, `make test-race`.
+  Acceptance: all four pass; `make cover` reports at least 80% total, matching the CI gate.
+
+- [ ] **M4 — P1: Publish v0.0.2.**
+  Commit, tag, run goreleaser through the existing release workflow.
+  Acceptance: the GitHub release for `v0.0.2` contains
+  `google-play-publisher_0.0.2_linux_amd64.tar.gz` and `checksums.txt`, and the checksum in
+  that file matches `sha256sum` of the downloaded archive. Release notes name the breaking
+  change: `--release-notes` is removed, notes now come from `--changelog-dir`.
+
+**DoD:** v0.0.2 is published with `--changelog-dir`, `--version-code` and `--release-name`;
+Gunclub's `android.yml` can install the binary and publish with
+`--changelog-dir metadata --version-code "$VERSION_CODE"`.
+**Gate:** do not commit Gunclub's workflow switch before this release exists; it calls the new
+flags.

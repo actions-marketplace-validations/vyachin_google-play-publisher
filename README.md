@@ -33,9 +33,8 @@ Full setup instructions: [docs/04-play-console-setup.md](docs/04-play-console-se
 ## Quick start
 
 ```bash
-# 1. Check access, track and artifact
-google-play-publisher doctor -p com.example.app -f app-release.aab \
-  --metadata output-metadata.json
+# 1. Check access and the target track
+google-play-publisher doctor -p com.example.app
 
 # 2. Publish to internal
 google-play-publisher publish -p com.example.app -f app-release.aab -t internal
@@ -52,19 +51,33 @@ google-play-publisher --json publish -p com.example.app -f app-release.aab > pub
 
 ## Release notes
 
-```json
-{"en-US": "Bug fixes", "de-DE": "Fehlerbehebungen"}
+Release notes come from a Play-style metadata directory: one file per locale named after the
+`versionCode`.
+
+```
+metadata/
+  en-US/changelogs/42.txt   # "Bug fixes"
+  de-DE/changelogs/42.txt   # "Fehlerbehebungen"
 ```
 
 ```bash
-google-play-publisher publish -p com.example.app -f app-release.aab --release-notes notes.json
+google-play-publisher publish -p com.example.app -f app-release.aab \
+  --changelog-dir metadata --version-code 42 --release-name 1.0.42
 ```
+
+`--version-code` is required with `--changelog-dir`: it selects the changelog files and is
+checked against the `versionCode` returned by the upload. Locales without a file for that
+version code are skipped; when no file exists at all, the command fails with exit code 2 and
+the path it checked. `--release-name` is optional, but the release name is what Play Console
+shows next to the version code.
 
 ## Useful options
 
-- `--dry-run` — upload the AAB and validate the edit without committing.
+- `--dry-run` — upload the AAB and validate the edit without committing. The upload still
+  consumes the `versionCode`, so never dry-run a release build.
 - `--debug` — detailed HTTP, phase and retry logs (secrets are redacted).
-- `--if-exists=skip` — idempotent rerun when the version code is already on the track.
+- `--if-exists=skip` — idempotent rerun when the version code is already on the track, if the
+  version code is known from `--metadata` or `--version-code`.
 - `google-play-publisher completion bash|zsh|fish|powershell` — shell completion.
 
 ## Limitations

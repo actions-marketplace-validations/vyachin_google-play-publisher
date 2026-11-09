@@ -26,12 +26,29 @@ type globalFlags struct {
 
 // Execute runs the command tree and returns a process exit code.
 func Execute(ctx context.Context, app *App, args []string) int {
-	cmd := NewRootCmd(app)
+	cmd, g := newRootCmd(app)
 	cmd.SetArgs(args)
 
-	err := cmd.ExecuteContext(ctx)
+	executed, err := cmd.ExecuteContextC(ctx)
 	if err == nil {
 		return int(exitcode.OK)
+	}
+
+	code := exitcode.From(err)
+	if ctx.Err() != nil {
+		code = exitcode.Interrupted
+		err = exitcode.Errorf(exitcode.Interrupted, "operation interrupted")
+	}
+
+	if g.JSON {
+		var rendered *renderedError
+		if !errors.As(err, &rendered) {
+			if writeErr := writeErrorJSON(app.Stdout, executed, err, code); writeErr != nil {
+				printError(app.Stderr, writeErr, exitcode.Internal)
+				return int(exitcode.Internal)
+			}
+		}
+		return int(code)
 	}
 
 	if ctx.Err() != nil {
@@ -39,13 +56,17 @@ func Execute(ctx context.Context, app *App, args []string) int {
 		return int(exitcode.Interrupted)
 	}
 
-	code := exitcode.From(err)
 	printError(app.Stderr, err, code)
 	return int(code)
 }
 
 // NewRootCmd builds the root command with all subcommands attached.
 func NewRootCmd(app *App) *cobra.Command {
+	root, _ := newRootCmd(app)
+	return root
+}
+
+func newRootCmd(app *App) (*cobra.Command, *globalFlags) {
 	g := &globalFlags{}
 
 	root := &cobra.Command{
@@ -104,7 +125,7 @@ func NewRootCmd(app *App) *cobra.Command {
 		newVersionCmd(app, g),
 	)
 
-	return root
+	return root, g
 }
 
 // printError writes the final error message once, with an optional hint.

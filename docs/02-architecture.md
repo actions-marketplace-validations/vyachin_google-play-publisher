@@ -100,7 +100,8 @@ sequenceDiagram
   (the marker of an AAB, not an APK);
 - when `--metadata output-metadata.json` is passed: `applicationId` matches `--package`, and
   `versionCode` is known in advance (it is not sent to the API — Play returns it after the
-  upload; the value is used for logs and a preflight comparison);
+  upload; the value is used for logs and a preflight comparison). AGP does not produce this
+  file for `bundleRelease`, so AAB pipelines normally pass `--package` instead;
 - `--package` is syntactically valid (dot-separated segments);
 - the track exists in the track list (custom closed-track creation is outside the MVP);
 - if `versionCode` is known and already present on the target track, apply `--if-exists`
@@ -117,7 +118,9 @@ only after everything else has been checked.
   smaller than one chunk are sent as a multipart request, larger ones as resumable chunks;
 - progress goes through `ProgressUpdater`, `INFO` every 5% (more detail in debug), so CI does
   not look stuck;
-- after the response, compare `sha256` with the local value and log `versionCode`.
+- after the response, compare the returned `sha256` with the inspected value and log
+  `versionCode`; a mismatch means the file changed during the run, so the edit is deleted
+  before `tracks.update` and the command fails.
 
 ### Track update
 
@@ -131,7 +134,9 @@ integration test shows that a merge is needed (preserving previous `completed` r
 - `InReviewBehavior`: `ERROR_IF_IN_REVIEW` by default; `CANCEL_IN_REVIEW_AND_SUBMIT` only with
   an explicit `--on-in-review=replace`;
 - `ChangesNotSentForReview`: `false` by default; when Play refuses automatic submission, the
-  tool retries exactly once with `true` and exits with the "manual action required" code.
+  tool retries exactly once with `true`, reports the saved release and exits with code 8;
+- every ambiguous failure is reconciled against the track before a retry or an error, and the
+  reported review state comes from the options that were actually sent.
 
 ## 5. Review policy
 
@@ -165,8 +170,8 @@ reused for a new release.
 
 Republishing the same AAB after a **successful** commit is not attempted: it is a separate
 release with the same version code, which Play rejects. If `versionCode` is known from
-metadata the tool detects this before uploading; otherwise Play rejects it and the tool exits
-with code 5.
+`--metadata` or `--version-code` the tool detects this before uploading and applies
+`--if-exists`; otherwise Play rejects the upload and the tool exits with code 5.
 
 ## 7. Timeouts and cancellation
 

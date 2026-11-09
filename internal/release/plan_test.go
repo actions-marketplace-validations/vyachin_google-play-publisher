@@ -1,6 +1,7 @@
 package release_test
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -123,6 +124,21 @@ func TestNewPlanErrors(t *testing.T) {
 		{
 			name: "rollout is negative",
 			in:   release.Input{Package: "com.example.app", Rollout: -0.1, RolloutSet: true},
+			want: "rollout",
+		},
+		{
+			name: "rollout is NaN",
+			in:   release.Input{Package: "com.example.app", Rollout: math.NaN(), RolloutSet: true},
+			want: "rollout",
+		},
+		{
+			name: "rollout is positive infinity",
+			in:   release.Input{Package: "com.example.app", Rollout: math.Inf(1), RolloutSet: true},
+			want: "rollout",
+		},
+		{
+			name: "rollout is negative infinity",
+			in:   release.Input{Package: "com.example.app", Rollout: math.Inf(-1), RolloutSet: true},
 			want: "rollout",
 		},
 	}

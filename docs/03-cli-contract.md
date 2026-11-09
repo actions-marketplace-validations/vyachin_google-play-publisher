@@ -62,29 +62,43 @@ google-play-publisher publish --package com.example.app \
 | `--package`, `-p` | string | from `--metadata` | `applicationId`; required when there is no metadata |
 | `--aab`, `-f` | path | — | Path to the signed AAB; required |
 | `--track`, `-t` | string | `internal` | Track name; the MVP uses `internal` |
-| `--status` | enum | `completed` | `completed` \| `draft`; `inProgress` — post-MVP |
-| `--rollout` | float | `0` | Post-MVP: user fraction, `0 < f < 1` |
-| `--release-notes` | path | — | JSON `{"en-US": "text", "ru-RU": "text"}`, ≤ 500 characters per locale |
+| `--status` | enum | `completed` | `completed` \| `draft` \| `inProgress` (`inProgress` requires `--rollout`) |
+| `--rollout` | float | `0` | User fraction, `0 < f < 1`; implies `inProgress` when `--status` is omitted |
+| `--changelog-dir` | path | — | Play-style metadata directory: reads `<DIR>/<locale>/changelogs/<versionCode>.txt` |
+| `--version-code` | int | — | `versionCode` used to find changelog files and to verify the upload; required with `--changelog-dir` |
+| `--release-name` | string | — | Release name stored in Play; empty keeps the current behavior (no name) |
 | `--changes-not-sent-for-review` | bool | `false` | Save changes without submitting them for review |
 | `--on-in-review` | enum | `error` | `error` → `ERROR_IF_IN_REVIEW`; `replace` → `CANCEL_IN_REVIEW_AND_SUBMIT` |
 | `--if-exists` | enum | `fail` | `fail` \| `skip` — behavior when the version code is already on the track |
 | `--dry-run` | bool | `false` | Full run without `commit`, then delete the edit |
-| `--metadata` | path | — | AGP `output-metadata.json`: `applicationId`, `versionCode` |
+| `--metadata` | path | — | AGP `output-metadata.json`: `applicationId`, `versionCode`; optional |
+
+Release notes come only from `--changelog-dir`. A locale without
+`<versionCode>.txt` is skipped, so a partial translation is allowed; when no locale has
+a file, the command fails with exit code 2 and the paths that were checked before any
+edit is created. `--version-code` without `--changelog-dir` is allowed and only verifies
+the `versionCode` returned by `bundles.upload`.
+
+`--metadata` is optional. AGP does not write `build/outputs/bundle/<variant>/output-metadata.json`
+for `bundleRelease` (the file stays under `build/intermediates/bundle_ide_model/...`), so
+AAB pipelines should pass `--package` explicitly instead of relying on metadata.
 
 The remaining flags (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`,
 `--endpoint`) are global, see §1.
 
-Combination validation (exit code 2 on violation; `--rollout`/`inProgress` are post-MVP):
+Combination validation (exit code 2 on violation):
 
 - `--rollout` set, `--status` not set → status `inProgress`;
-- `--rollout` together with an explicit `--status=completed` → error;
+- `--rollout` together with an explicit `--status=completed` or `--status=draft` → error;
 - `--status=inProgress` without `--rollout` → error;
-- `--rollout` outside `(0,1)` → error;
+- `--rollout` outside `(0,1)`, including `NaN` and infinities → error;
+- `--changelog-dir` without `--version-code` → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error.
 
 `--dry-run` is not "do nothing": the AAB is actually uploaded, the edit is validated and then
-deleted. It consumes traffic and creates an edit (daily quota). The output states this
-explicitly.
+deleted. It consumes traffic, creates an edit (daily quota) and the uploaded `versionCode`
+may stay used even after the edit is deleted. Never dry-run the version code reserved for a
+release. The output states this explicitly.
 
 ### `google-play-publisher doctor` — MVP
 
@@ -142,15 +156,15 @@ a mistake). Environment variables are limited to Google auth and terminal behavi
 
 | Code | Name | When |
 | --- | --- | --- |
-| 0 | `OK` | Success; also an idempotent no-op (`--if-exists=skip`) |
-| 1 | `INTERNAL` | Unexpected error/panic |
-| 2 | `USAGE` | Bad flags, missing file, incompatible combination |
-| 3 | `AUTH` | 401/403: wrong key path, missing permissions, service account not added, API disabled |
+| 0 | `OK` | Success; also an idempotent no-op (`--if-exists=skip`) and an explicit `--changes-not-sent-for-review` save |
+| 1 | `INTERNAL` | Unexpected error/panic, or the uploaded bundle does not match the inspected artifact |
+| 2 | `USAGE` | Bad flags, missing file, invalid changelog, incompatible combination |
+| 3 | `AUTH` | 401/403: wrong key path, rejected token request, missing permissions, service account not added, API disabled |
 | 4 | `NOT_FOUND` | App or track not found, no access to the app |
 | 5 | `CONFLICT` | Edit invalidated, changes in review (`ERROR_IF_IN_REVIEW`), version code already exists |
-| 6 | `TRANSIENT` | Network/5xx after exhausted retries, broken upload, temporary limits (including the daily edit quota) |
+| 6 | `TRANSIENT` | Network/timeout/5xx after exhausted retries, broken upload, temporary limits (including the daily edit quota) |
 | 7 | `REJECTED` | Play rejected the changes: signature, version code, release notes, track configuration |
-| 8 | `MANUAL_ACTION` | Changes saved but require manual submission for review |
+| 8 | `MANUAL_ACTION` | Changes were saved without review because Play refused automatic submission; submit them manually |
 | 130 | `INTERRUPTED` | SIGINT/SIGTERM; the edit was deleted best-effort |
 
 Rule: the code reflects the **action** a human or pipeline must take, not the HTTP status.
@@ -184,12 +198,12 @@ Error:
   "command": "publish",
   "package": "com.example.app",
   "error": {
-    "code": "version_already_used",
+    "code": "conflict",
     "exitCode": 5,
-    "message": "versionCode 42 already exists in track internal",
+    "message": "version code 42 has already been used (HTTP 400)",
     "apiCode": 400,
     "reason": "badRequest",
-    "hint": "Bump versionCode and rebuild the AAB, or pass --if-exists=skip"
+    "hint": "reload the app state and retry; bump versionCode if it was already used"
   }
 }
 ```
@@ -200,8 +214,29 @@ Fields:
 | --- | --- |
 | `review` | `sent` \| `notSent` \| `replaced` \| `skipped` \| `validated` |
 | `managedPublishing` | `unknown` — the API does not expose the flag; not applicable to `internal` |
-| `error.code` | stable machine-readable identifier |
+| `error.code` | stable machine-readable identifier, see the table below |
 | `error.exitCode` | mirrors the process exit code for parsers |
+| `error.apiCode`, `error.reason` | Play HTTP status and reason when the failure came from the API |
+| `ok` | `false` for failures; for exit code 8 the saved release is reported with `ok: true` and `review: "notSent"` |
+
+`error.code` values (independent of Play wording):
+
+| Code | Exit code |
+| --- | --- |
+| `usage` | 2 |
+| `auth` | 3 |
+| `not_found` | 4 |
+| `conflict` | 5 |
+| `transient` | 6 |
+| `rejected` | 7 |
+| `manual_action` | 8 |
+| `interrupted` | 130 |
+| `internal` | 1 |
+
+With `--json`, a failed command writes exactly one object to `stdout` and logs to `stderr`.
+`doctor` reports its checks and the `error` object in that single object. When the release was
+saved but needs manual submission (exit code 8), `stdout` contains the success object with
+`"review": "notSent"`; the action for the operator is on `stderr`.
 
 The schema is versioned with `schemaVersion` on the first change; until then `1` is implied.
 
@@ -213,8 +248,10 @@ The schema is versioned with `schemaVersion` on the first change; until then `1`
 export GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/google-play-publisher/sa.json
 google-play-publisher doctor --package com.example.app
 google-play-publisher publish -p com.example.app -f app-release.aab -t internal \
-  --release-notes notes.json
+  --changelog-dir metadata --version-code 42 --release-name 1.0.42
 ```
+
+`metadata/` uses the Play/fastlane layout: `metadata/<locale>/changelogs/42.txt`.
 
 ### CI (GitHub Actions excerpt)
 
@@ -230,6 +267,7 @@ tool's responsibility.
       --package "$PACKAGE" \
       --aab app/build/outputs/bundle/release/app-release.aab \
       --track internal \
+      --changelog-dir metadata --version-code "$VERSION_CODE" \
       --json > publish.json
 ```
 
@@ -254,7 +292,7 @@ they are not used in the MVP.
 ```bash
 google-play-publisher publish -p com.example.app -f app-release.aab \
   -t production --status inProgress --rollout 0.05 \
-  --release-notes notes.json
+  --changelog-dir metadata --version-code 42 --release-name 1.0.42
 # later:
 google-play-publisher rollout -p com.example.app -t production --version-code 42 --fraction 0.2
 google-play-publisher rollout -p com.example.app -t production --version-code 42 --complete

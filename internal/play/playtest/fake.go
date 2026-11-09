@@ -52,7 +52,7 @@ func (f *Fake) UploadBundle(ctx context.Context, pkg, editID string, r io.Reader
 	if f.UploadBundleFunc != nil {
 		return f.UploadBundleFunc(ctx, pkg, editID, r, size)
 	}
-	return play.BundleInfo{VersionCode: 42, SHA256: "sha256-default"}, nil
+	return play.BundleInfo{VersionCode: 42}, nil
 }
 
 // UpdateTrack records the call.
