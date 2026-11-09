@@ -127,6 +127,12 @@ owns the handle; `PublishPrepared` accepts only that value, uploads from the sam
 closes it on every path. A direct app caller cannot apply options that were not validated.
 The CLI only parses flags, calls `Prepare` and formats the result.
 
+`app.PublishOptions.Rollout` and `release.Input.Rollout` are optional `*float64` values:
+`nil` means omitted; any provided value, including zero, is validated. There is no separate
+presence flag that could let a direct caller bypass fraction/status validation. The CLI
+sets the pointer only when `--rollout` was explicitly passed. The resulting plan stores
+the validated fraction by value, so later changes to the input cannot alter a prepared release.
+
 Preflight is deliberately cheap and does not create an edit: the daily edit quota is spent
 only after everything else has been checked.
 

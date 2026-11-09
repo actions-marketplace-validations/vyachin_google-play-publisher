@@ -9,6 +9,8 @@ import (
 	"github.com/vyachin/google-play-publisher/internal/release"
 )
 
+func rollout(value float64) *float64 { return &value }
+
 func TestNewPlanValid(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -31,7 +33,7 @@ func TestNewPlanValid(t *testing.T) {
 		},
 		{
 			name:         "rollout implies inProgress",
-			in:           release.Input{Package: "com.example.app", Rollout: 0.05, RolloutSet: true},
+			in:           release.Input{Package: "com.example.app", Rollout: rollout(0.05)},
 			wantStatus:   release.StatusInProgress,
 			wantFraction: 0.05,
 			wantTrack:    "internal",
@@ -39,10 +41,9 @@ func TestNewPlanValid(t *testing.T) {
 		{
 			name: "explicit inProgress",
 			in: release.Input{
-				Package:    "com.example.app",
-				Status:     "inProgress",
-				Rollout:    0.2,
-				RolloutSet: true,
+				Package: "com.example.app",
+				Status:  "inProgress",
+				Rollout: rollout(0.2),
 			},
 			wantStatus:   release.StatusInProgress,
 			wantFraction: 0.2,
@@ -103,7 +104,7 @@ func TestNewPlanErrors(t *testing.T) {
 		},
 		{
 			name: "completed with rollout",
-			in:   release.Input{Package: "com.example.app", Status: "completed", Rollout: 0.1, RolloutSet: true},
+			in:   release.Input{Package: "com.example.app", Status: "completed", Rollout: rollout(0.1)},
 			want: "rollout",
 		},
 		{
@@ -113,32 +114,32 @@ func TestNewPlanErrors(t *testing.T) {
 		},
 		{
 			name: "rollout is zero",
-			in:   release.Input{Package: "com.example.app", Rollout: 0, RolloutSet: true},
+			in:   release.Input{Package: "com.example.app", Rollout: rollout(0)},
 			want: "rollout",
 		},
 		{
 			name: "rollout is one",
-			in:   release.Input{Package: "com.example.app", Rollout: 1, RolloutSet: true},
+			in:   release.Input{Package: "com.example.app", Rollout: rollout(1)},
 			want: "rollout",
 		},
 		{
 			name: "rollout is negative",
-			in:   release.Input{Package: "com.example.app", Rollout: -0.1, RolloutSet: true},
+			in:   release.Input{Package: "com.example.app", Rollout: rollout(-0.1)},
 			want: "rollout",
 		},
 		{
 			name: "rollout is NaN",
-			in:   release.Input{Package: "com.example.app", Rollout: math.NaN(), RolloutSet: true},
+			in:   release.Input{Package: "com.example.app", Rollout: rollout(math.NaN())},
 			want: "rollout",
 		},
 		{
 			name: "rollout is positive infinity",
-			in:   release.Input{Package: "com.example.app", Rollout: math.Inf(1), RolloutSet: true},
+			in:   release.Input{Package: "com.example.app", Rollout: rollout(math.Inf(1))},
 			want: "rollout",
 		},
 		{
 			name: "rollout is negative infinity",
-			in:   release.Input{Package: "com.example.app", Rollout: math.Inf(-1), RolloutSet: true},
+			in:   release.Input{Package: "com.example.app", Rollout: rollout(math.Inf(-1))},
 			want: "rollout",
 		},
 	}

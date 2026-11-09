@@ -729,8 +729,8 @@ func TestPublishInvalidPlanDoesNotCallAPI(t *testing.T) {
 	publisher := app.NewPublisher(fake, nil)
 
 	opts := baseOptions(writeAAB(t))
-	opts.Rollout = 1
-	opts.RolloutSet = true
+	fraction := 1.0
+	opts.Rollout = &fraction
 
 	_, err := publisher.Publish(context.Background(), opts)
 	if err == nil {
@@ -738,6 +738,47 @@ func TestPublishInvalidPlanDoesNotCallAPI(t *testing.T) {
 	}
 	if len(fake.Calls) != 0 {
 		t.Fatalf("API must not be called: %v", fake.Calls)
+	}
+}
+
+func TestPublishOptionalRollout(t *testing.T) {
+	fraction := 0.25
+	zero := 0.0
+	for _, test := range []struct {
+		name         string
+		rollout      *float64
+		status       string
+		wantStatus   string
+		wantFraction float64
+		wantCode     exitcode.Code
+	}{
+		{name: "omitted", wantStatus: "completed"},
+		{name: "staged", rollout: &fraction, wantStatus: "inProgress", wantFraction: fraction},
+		{name: "explicit zero", rollout: &zero, wantCode: exitcode.Usage},
+		{name: "completed with fraction", rollout: &fraction, status: "completed", wantCode: exitcode.Usage},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &playtest.Fake{}
+			opts := baseOptions(writeAAB(t))
+			opts.Rollout, opts.Status = test.rollout, test.status
+			_, err := app.NewPublisher(fake, nil).Publish(context.Background(), opts)
+			if exitcode.From(err) != test.wantCode {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if test.wantCode != exitcode.OK {
+				if len(fake.Calls) != 0 {
+					t.Fatalf("invalid rollout reached API: %v", fake.Calls)
+				}
+				return
+			}
+			if len(fake.UpdatedReleases) != 1 {
+				t.Fatalf("unexpected releases: %v", fake.UpdatedReleases)
+			}
+			rel := fake.UpdatedReleases[0]
+			if rel.Status != test.wantStatus || rel.UserFraction != test.wantFraction {
+				t.Fatalf("unexpected release: %#v", rel)
+			}
+		})
 	}
 }
 

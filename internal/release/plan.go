@@ -41,12 +41,12 @@ type Plan struct {
 
 // Input holds raw values collected from CLI flags.
 type Input struct {
-	Package    string
-	Track      string
-	Status     string
-	Rollout    float64
-	RolloutSet bool
-	Notes      map[string]string
+	Package string
+	Track   string
+	Status  string
+	// Rollout is nil when no staged rollout was requested.
+	Rollout *float64
+	Notes   map[string]string
 }
 
 var (
@@ -69,7 +69,7 @@ func NewPlan(in Input) (Plan, error) {
 		return Plan{}, exitcode.Errorf(exitcode.Usage, "invalid track name %q", track)
 	}
 
-	status, err := resolveStatus(in.Status, in.Rollout, in.RolloutSet)
+	status, err := resolveStatus(in.Status, in.Rollout)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -79,19 +79,25 @@ func NewPlan(in Input) (Plan, error) {
 		return Plan{}, err
 	}
 
+	fraction := 0.0
+	if in.Rollout != nil {
+		fraction = *in.Rollout
+	}
+
 	return Plan{
 		Package:      in.Package,
 		Track:        track,
 		Status:       status,
-		UserFraction: in.Rollout,
+		UserFraction: fraction,
 		Notes:        notes,
 	}, nil
 }
 
-func resolveStatus(raw string, rollout float64, rolloutSet bool) (Status, error) {
-	if rolloutSet && (math.IsNaN(rollout) || math.IsInf(rollout, 0) || rollout <= 0 || rollout >= 1) {
+func resolveStatus(raw string, rollout *float64) (Status, error) {
+	rolloutSet := rollout != nil
+	if rolloutSet && (math.IsNaN(*rollout) || math.IsInf(*rollout, 0) || *rollout <= 0 || *rollout >= 1) {
 		return "", exitcode.Errorf(exitcode.Usage,
-			"--rollout must be between 0 and 1 (exclusive), got %v", rollout)
+			"--rollout must be between 0 and 1 (exclusive), got %v", *rollout)
 	}
 
 	status := Status(strings.TrimSpace(raw))

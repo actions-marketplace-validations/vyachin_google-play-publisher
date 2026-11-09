@@ -111,6 +111,11 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		status = "" // let --rollout imply inProgress
 	}
 
+	var rollout *float64
+	if cmd.Flags().Changed("rollout") {
+		rollout = &flags.Rollout
+	}
+
 	opts := appcore.PublishOptions{
 		Package:                 flags.Package,
 		AABPath:                 flags.AAB,
@@ -119,8 +124,7 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		VersionCode:             flags.VersionCode,
 		Track:                   flags.Track,
 		Status:                  status,
-		Rollout:                 flags.Rollout,
-		RolloutSet:              cmd.Flags().Changed("rollout"),
+		Rollout:                 rollout,
 		ReleaseName:             flags.ReleaseName,
 		IfExists:                exists,
 		ChangesNotSentForReview: flags.ChangesNotSentForReview,

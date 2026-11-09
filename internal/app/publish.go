@@ -35,8 +35,7 @@ type PublishOptions struct {
 	VersionCode             int64
 	Track                   string
 	Status                  string
-	Rollout                 float64
-	RolloutSet              bool
+	Rollout                 *float64
 	Notes                   map[string]string
 	ReleaseName             string
 	IfExists                release.ExistsPolicy
@@ -213,12 +212,11 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 	}
 
 	plan, err := release.NewPlan(release.Input{
-		Package:    opts.Package,
-		Track:      opts.Track,
-		Status:     opts.Status,
-		Rollout:    opts.Rollout,
-		RolloutSet: opts.RolloutSet,
-		Notes:      notes,
+		Package: opts.Package,
+		Track:   opts.Track,
+		Status:  opts.Status,
+		Rollout: opts.Rollout,
+		Notes:   notes,
 	})
 	if err != nil {
 		return Prepared{}, err
