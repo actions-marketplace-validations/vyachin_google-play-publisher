@@ -63,7 +63,8 @@ type API interface {
 `BundleInfo{VersionCode int64, SHA256, SHA1 string}` — exactly what logs and JSON need.
 
 The implementation is `play.Client` holding an `*androidpublisher.Service`: the service is
-created with `option.WithHTTPClient` (an oauth2 client built from ADC or `--credentials`) and
+created with `option.WithHTTPClient` (a context-aware cloud auth client built from ADC or
+`--credentials`, so token acquisition and refresh use the operation context) and
 `option.WithEndpoint` for tests; the User-Agent is set in the transport, and the timeout is
 defined by the operation context.
 
@@ -113,6 +114,12 @@ Local validation runs before the API client is constructed: an invalid package, 
 status, rollout, notes, AAB or metadata pair fails with code 2 without authentication and
 without a network call. Retries of the remaining safely repeatable calls are bounded (see
 [05-errors.md](05-errors.md#3-retry-policy)).
+
+`app.Prepare` owns all local validation, including the policy options (`--if-exists`,
+`--on-in-review`, `--dry-run` together with `--changes-not-sent-for-review`) and resolving
+`--package` from `--metadata`. It returns an opaque prepared operation, and
+`PublishPrepared` accepts only that value, so a direct app caller cannot apply options that
+were not validated. The CLI only parses flags, calls `Prepare` and formats the result.
 
 Preflight is deliberately cheap and does not create an edit: the daily edit quota is spent
 only after everything else has been checked.

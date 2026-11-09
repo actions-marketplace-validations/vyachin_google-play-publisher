@@ -107,8 +107,9 @@ deleted. It consumes traffic, creates an edit (daily quota) and the uploaded `ve
 may stay used even after the edit is deleted. Never dry-run the version code reserved for a
 release. The output states this explicitly.
 
-Local validation (package, track, status, rollout, notes, AAB and metadata) happens before the
-API client is created, so invalid input returns code 2 even when credentials are unavailable.
+Local validation (package, track, status, rollout, notes, AAB, metadata and policy options,
+including the metadata-resolved package) happens before the API client is created, so invalid
+input returns code 2 even when credentials are unavailable.
 
 ### `google-play-publisher doctor` — MVP
 

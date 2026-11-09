@@ -89,26 +89,6 @@ the edit. The default track is "internal".`,
 }
 
 func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags) error {
-	if flags.Package == "" && flags.Metadata != "" {
-		pkg, err := appcore.PackageFromMetadata(flags.Metadata)
-		if err != nil {
-			return err
-		}
-		if err := cmd.Flags().Set("package", pkg); err != nil {
-			return exitcode.Wrap(exitcode.Usage, err)
-		}
-	}
-	if flags.Package == "" {
-		return exitcode.Errorf(exitcode.Usage, "--package is required")
-	}
-	if flags.AAB == "" {
-		return exitcode.Errorf(exitcode.Usage, "--aab is required")
-	}
-	if flags.ChangesNotSentForReview && flags.DryRun {
-		return exitcode.Errorf(exitcode.Usage,
-			"--changes-not-sent-for-review cannot be combined with --dry-run")
-	}
-
 	inReview, err := parseInReview(flags.OnInReview)
 	if err != nil {
 		return err
@@ -159,6 +139,10 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 	if err != nil {
 		return err
 	}
+	// Keep the JSON error object complete when --package came from metadata.
+	if flags.Package == "" {
+		_ = cmd.Flags().Set("package", prepared.Package())
+	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), g.Timeout)
 	defer cancel()
@@ -171,7 +155,7 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 	publisher := appcore.NewPublisher(api, a.Logger)
 
 	start := time.Now()
-	result, err := publisher.PublishPrepared(ctx, opts, prepared)
+	result, err := publisher.PublishPrepared(ctx, prepared)
 	if err != nil {
 		// A manual-review fallback saves the release and still needs exit
 		// code 8, so the saved result must be reported before the error.

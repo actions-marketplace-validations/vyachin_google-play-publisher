@@ -18,6 +18,9 @@
 - Token acquisition and blocking refresh run under the operation context, so `--timeout` and
   cancellation also stop a stalled token endpoint; token endpoint failures are mapped from
   the cloud auth transport.
+- Publish invariants (`--if-exists`, `--on-in-review`, `--dry-run` with
+  `--changes-not-sent-for-review`) and metadata-based package resolution are validated in the
+  app layer; `PublishPrepared` accepts only the opaque result of `Prepare`.
 
 ## v0.0.2 — 2026-11-09
 

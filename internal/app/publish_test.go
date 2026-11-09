@@ -546,6 +546,81 @@ func TestPrepareRejectsConflictingVersionCodes(t *testing.T) {
 	}
 }
 
+func TestPrepareValidatesPolicyOptions(t *testing.T) {
+	aab := writeAAB(t)
+
+	tests := []struct {
+		name   string
+		mutate func(*app.PublishOptions)
+	}{
+		{"invalid if-exists", func(o *app.PublishOptions) { o.IfExists = "sometimes" }},
+		{"invalid in-review", func(o *app.PublishOptions) { o.InReviewBehavior = "ignore" }},
+		{"dry-run with save", func(o *app.PublishOptions) {
+			o.DryRun = true
+			o.ChangesNotSentForReview = true
+		}},
+		{"negative version code", func(o *app.PublishOptions) { o.VersionCode = -1 }},
+		{"missing aab", func(o *app.PublishOptions) { o.AABPath = "" }},
+		{"missing package", func(o *app.PublishOptions) { o.Package = "" }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			opts := baseOptions(aab)
+			test.mutate(&opts)
+
+			if _, err := app.Prepare(opts); exitcode.From(err) != exitcode.Usage {
+				t.Fatalf("code = %d, want %d (err: %v)", exitcode.From(err), exitcode.Usage, err)
+			}
+		})
+	}
+}
+
+func TestPrepareResolvesPackageFromMetadata(t *testing.T) {
+	opts := baseOptions(writeAAB(t))
+	opts.Package = ""
+	opts.MetadataPath = writeMetadata(t, 42)
+
+	prepared, err := app.Prepare(opts)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+
+	result, err := app.NewPublisher(&playtest.Fake{}, nil).
+		PublishPrepared(context.Background(), prepared)
+	if err != nil {
+		t.Fatalf("PublishPrepared: %v", err)
+	}
+	if result.Package != "com.example.app" {
+		t.Fatalf("package = %q, want com.example.app", result.Package)
+	}
+}
+
+func TestPublishPolicyValidationBeforeAPI(t *testing.T) {
+	fake := &playtest.Fake{}
+	publisher := app.NewPublisher(fake, nil)
+
+	opts := baseOptions(writeAAB(t))
+	opts.InReviewBehavior = "ignore"
+
+	_, err := publisher.Publish(context.Background(), opts)
+	if got := exitcode.From(err); got != exitcode.Usage {
+		t.Fatalf("code = %d, want %d (err: %v)", got, exitcode.Usage, err)
+	}
+	if len(fake.Calls) != 0 {
+		t.Fatalf("API was called for invalid input: %v", fake.Calls)
+	}
+}
+
+func TestPublishPreparedRejectsZeroValue(t *testing.T) {
+	publisher := app.NewPublisher(&playtest.Fake{}, nil)
+
+	_, err := publisher.PublishPrepared(context.Background(), app.Prepared{})
+	if got := exitcode.From(err); got != exitcode.Internal {
+		t.Fatalf("code = %d, want %d (err: %v)", got, exitcode.Internal, err)
+	}
+}
+
 func TestPublishUploadedHashMismatch(t *testing.T) {
 	fake := &playtest.Fake{
 		UploadBundleFunc: func(context.Context, string, string, io.Reader, int64) (play.BundleInfo, error) {

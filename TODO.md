@@ -489,7 +489,7 @@ and update the matching behavior/error document under `docs/`.
 
 ### Additional improvements
 
-- [ ] **I5 — P2: Enforce shared publish invariants in the app layer.**
+- [x] **I5 — P2: Enforce shared publish invariants in the app layer.**
   `Prepare` claims to validate every local input, but policy validation and
   metadata-based package resolution are partly CLI-only. A direct `Publisher.Publish`
   caller can pass unsupported `IfExists`/`InReviewBehavior` values or combine

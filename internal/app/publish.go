@@ -68,17 +68,47 @@ func NewPublisher(api play.API, logger *slog.Logger) *Publisher {
 	return &Publisher{api: api, logger: logger}
 }
 
-// Prepared holds the locally validated inputs of a publish operation.
+// Prepared holds a publish operation whose local inputs and policy options
+// were validated by Prepare. The fields are unexported so PublishPrepared
+// cannot receive a different set of options than the one that was validated.
 type Prepared struct {
-	Plan     release.Plan
-	Artifact artifact.Info
-	Metadata *artifact.Metadata
+	opts     PublishOptions
+	plan     release.Plan
+	artifact artifact.Info
+	metadata *artifact.Metadata
+	valid    bool
 }
 
-// Prepare validates every local input without constructing an API client, so
-// a malformed package, track, status, rollout, notes, AAB or metadata pair
-// fails before authentication or any Play call.
+// Prepare validates every local input, including policy options and package
+// resolution from metadata, without constructing an API client. A malformed
+// package, track, status, rollout, notes, AAB, metadata pair or policy fails
+// before authentication or any Play call.
 func Prepare(opts PublishOptions) (Prepared, error) {
+	exists, err := release.ParseExistsPolicy(string(opts.IfExists))
+	if err != nil {
+		return Prepared{}, err
+	}
+	opts.IfExists = exists
+
+	if err := validatePublishOptions(opts); err != nil {
+		return Prepared{}, err
+	}
+
+	if opts.Package == "" && opts.MetadataPath == "" {
+		return Prepared{}, exitcode.Errorf(exitcode.Usage, "--package is required")
+	}
+	if opts.AABPath == "" {
+		return Prepared{}, exitcode.Errorf(exitcode.Usage, "--aab is required")
+	}
+
+	meta, err := readMetadata(opts)
+	if err != nil {
+		return Prepared{}, err
+	}
+	if opts.Package == "" {
+		opts.Package = meta.ApplicationID
+	}
+
 	plan, err := release.NewPlan(release.Input{
 		Package:    opts.Package,
 		Track:      opts.Track,
@@ -96,12 +126,37 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 		return Prepared{}, err
 	}
 
-	meta, err := readMetadata(opts)
-	if err != nil {
-		return Prepared{}, err
-	}
+	return Prepared{
+		opts:     opts,
+		plan:     plan,
+		artifact: info,
+		metadata: meta,
+		valid:    true,
+	}, nil
+}
 
-	return Prepared{Plan: plan, Artifact: info, Metadata: meta}, nil
+// Package returns the resolved application id. It is read-only and exists so
+// the CLI can report the metadata-resolved package in error output.
+func (p Prepared) Package() string { return p.opts.Package }
+
+// validatePublishOptions checks invariants that do not depend on the AAB or
+// metadata. Both the CLI and direct app callers go through this.
+func validatePublishOptions(opts PublishOptions) error {
+	if opts.VersionCode < 0 {
+		return exitcode.Errorf(exitcode.Usage, "--version-code must be positive, got %d", opts.VersionCode)
+	}
+	if opts.DryRun && opts.ChangesNotSentForReview {
+		return exitcode.Errorf(exitcode.Usage,
+			"--changes-not-sent-for-review cannot be combined with --dry-run")
+	}
+	switch opts.InReviewBehavior {
+	case "", play.InReviewError, play.InReviewReplace:
+	default:
+		return exitcode.Errorf(exitcode.Usage,
+			"invalid in-review behavior %q: want %q or %q",
+			opts.InReviewBehavior, play.InReviewError, play.InReviewReplace)
+	}
+	return nil
 }
 
 // Publish uploads an AAB, declares the release on a track and commits the edit.
@@ -110,20 +165,19 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 	if err != nil {
 		return PublishResult{}, err
 	}
-	return p.PublishPrepared(ctx, opts, prepared)
+	return p.PublishPrepared(ctx, prepared)
 }
 
 // PublishPrepared runs a publish operation for inputs validated by Prepare.
-func (p *Publisher) PublishPrepared(
-	ctx context.Context,
-	opts PublishOptions,
-	prepared Prepared,
-) (PublishResult, error) {
-	if opts.IfExists == "" {
-		opts.IfExists = release.ExistsFail
+// Passing a zero Prepared is a programming error.
+func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (PublishResult, error) {
+	if !prepared.valid {
+		return PublishResult{}, exitcode.Errorf(exitcode.Internal,
+			"prepared publish state is invalid; call Prepare before PublishPrepared")
 	}
 
-	plan, info, meta := prepared.Plan, prepared.Artifact, prepared.Metadata
+	opts := prepared.opts
+	plan, info, meta := prepared.plan, prepared.artifact, prepared.metadata
 
 	p.logger.Info("publishing",
 		"package", plan.Package,
@@ -324,16 +378,6 @@ func (p *Publisher) deleteEdit(pkg, editID string) {
 	p.logger.Debug("edit deleted", "editId", editID)
 }
 
-// PackageFromMetadata returns the applicationId declared by AGP metadata. It
-// lets publish run without --package when the sidecar file is supplied.
-func PackageFromMetadata(path string) (string, error) {
-	meta, err := artifact.ReadMetadata(path)
-	if err != nil {
-		return "", err
-	}
-	return meta.ApplicationID, nil
-}
-
 func readMetadata(opts PublishOptions) (*artifact.Metadata, error) {
 	if opts.MetadataPath == "" {
 		return nil, nil
@@ -343,8 +387,10 @@ func readMetadata(opts PublishOptions) (*artifact.Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := meta.VerifyPackage(opts.Package); err != nil {
-		return nil, err
+	if opts.Package != "" {
+		if err := meta.VerifyPackage(opts.Package); err != nil {
+			return nil, err
+		}
 	}
 	// Both values describe the same artifact, so a contradiction is a local
 	// input error. Reject it before an edit is created or a token is fetched.
