@@ -1,13 +1,11 @@
 # Changelog
 
-## Unreleased
+## v0.0.1 — 2026-11-09
+
+First public release: publishing signed AABs to the Google Play internal track.
 
 - Renamed the executable to `google-play-publisher`.
 - Translated all documentation to English and added `AGENTS.md` with project rules.
-
-## v0.1.0 — 2026-11-09
-
-First release: publishing signed AABs to the Google Play internal track.
 
 ### Commands
 

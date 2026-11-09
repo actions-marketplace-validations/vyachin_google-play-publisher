@@ -1,6 +1,6 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.1.0 implemented. Stages S1–S8 are done; S0 (Play Console access) was deferred
+**Status:** v0.0.1 implemented. Stages S1–S8 are done; S0 (Play Console access) was deferred
 by agreement; S9 is post-MVP.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
@@ -150,13 +150,13 @@ the boundaries.
 **DoD:** pipeline is green, coverage is above the threshold, the integration run is
 reproducible manually.
 
-## S8. v0.1 release — 0.5–1 d — done
+## S8. v0.0.1 release — 0.5–1 d — done
 
 - [x] `goreleaser`: linux/darwin/windows, amd64/arm64, tar.gz/zip, checksums, changelog.
 - [x] `-trimpath` and `-ldflags`; version/commit/date visible in `version`.
 - [x] Smoke test of the linux/amd64 and linux/arm64 binaries in containers.
 - [x] Instructions: [README.md](README.md) — installation, doctor, first `internal` publish.
-- [x] Tag `v0.1.0` and notes in [CHANGELOG.md](CHANGELOG.md).
+- [x] Tag `v0.0.1` and notes in [CHANGELOG.md](CHANGELOG.md).
 
 **DoD:** binaries build, run and publish on the test app; documentation matches behavior.
 
