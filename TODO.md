@@ -546,7 +546,8 @@ The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
 document, verify and release the result. S10 can proceed independently of the S9
 rollout/promote work. S10.0 is accepted in
-[ADR-0004](docs/adr/0004-github-actions.md); implementation continues with S10.1.
+[ADR-0004](docs/adr/0004-github-actions.md) and S10.1 (setup action) is implemented;
+implementation continues with S10.2.
 
 ### Analysis
 
@@ -650,27 +651,27 @@ parallel with S10.3, because the first publish action keeps an explicit `--versi
 documents are updated by the stages that implement each decision (S10.3, S10.5). No action
 implementation started before the decisions were settled.
 
-### S10.1. Provide a setup action — 1–1.5 d
+### S10.1. Provide a setup action — 1–1.5 d — done
 
-- [ ] Fix the action contract and supported runners in the new guide under `docs/` (completed
-      in S10.5), linked from `docs/README.md`. Start with Linux amd64/arm64; reject
-      unsupported platforms explicitly.
-- [ ] Add `setup/action.yml`, usable as `vyachin/google-play-publisher/setup@<ref>`, with an
-      explicit CLI `version` input and `version`/`path` outputs. Document action revision and
-      CLI version separately.
-- [ ] Implement the downloader in a shared shell script: normalize the version (strip a
-      leading `v` for the asset name but keep the tag form for the release URL), map
+- [x] Fix the action contract and supported runners in the new
+      [GitHub Actions guide](docs/07-github-actions.md), linked from `docs/README.md`. Start
+      with Linux amd64/arm64; reject unsupported platforms explicitly.
+- [x] Add [setup/action.yml](setup/action.yml), usable as
+      `vyachin/google-play-publisher/setup@<ref>`, with an explicit CLI `version` input and
+      `version`/`path` outputs. Document action revision and CLI version separately.
+- [x] Implement the downloader in [scripts/setup.sh](scripts/setup.sh): normalize the version
+      (strip a leading `v` for the asset name but keep the tag form for the release URL), map
       `uname -s`/`uname -m` to the goreleaser asset name (`x86_64` → `amd64`,
       `aarch64` → `arm64`), download the archive and `checksums.txt` with
       `curl --fail --location --retry`, verify the exact asset line's SHA-256 before
       extraction, install under `$RUNNER_TEMP`, and append the directory to `GITHUB_PATH`.
       Fail clearly for a missing release, asset or checksum. Allow a test-only base-URL
       override so CI fixtures do not depend on GitHub.
-- [ ] Test platform selection, version validation (`v` prefix, garbage, ranges), checksum and
+- [x] Test platform selection, version validation (`v` prefix, garbage, ranges), checksum and
       404 failures, paths containing spaces, and successful installation without Play
-      credentials. Run the smoke test on `ubuntu-latest` and `ubuntu-24.04-arm` against the
-      latest published release, never against an unreleased version.
-- [ ] Add `actionlint`, `shellcheck` and the script tests to CI (wired in S10.5).
+      credentials in [scripts/setup_test.sh](scripts/setup_test.sh). Runner smoke tests
+      against a published release are part of S10.5.
+- [x] Add `actionlint`, `shellcheck` and the script tests to CI.
 
 **DoD:** a setup step replaces the current curl/checksum/tar script, and subsequent `run`
 steps invoke the requested `google-play-publisher` version.

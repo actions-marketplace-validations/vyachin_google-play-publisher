@@ -1,0 +1,22 @@
+name: Setup google-play-publisher
+description: Install a released google-play-publisher CLI archive and add it to PATH
+inputs:
+  version:
+    description: 'Released CLI version, for example 0.0.4 or v0.0.4'
+    required: true
+outputs:
+  version:
+    description: Normalized CLI version
+    value: ${{ steps.install.outputs.version }}
+  path:
+    description: Directory that contains the google-play-publisher binary
+    value: ${{ steps.install.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - name: Install google-play-publisher
+      id: install
+      shell: bash
+      env:
+        GPP_VERSION: ${{ inputs.version }}
+      run: bash "$GITHUB_ACTION_PATH/../scripts/setup.sh"

@@ -28,6 +28,17 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      - name: Test shell scripts
+        run: bash scripts/setup_test.sh
+
+      - name: Lint shell scripts
+        run: shellcheck scripts/*.sh
+
+      - name: Lint workflows
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint"
+
       - name: Repeat tests
         run: go test -count=2 ./...
 

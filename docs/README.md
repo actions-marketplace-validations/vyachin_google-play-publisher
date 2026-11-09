@@ -78,6 +78,7 @@ These are platform limits, not gaps in the tool. Accept them before building fur
 - [04 — Play Console and access setup](04-play-console-setup.md)
 - [05 — Errors and retries](05-errors.md)
 - [06 — Stack and project structure](06-stack.md)
+- [07 — GitHub Actions](07-github-actions.md)
 - [ADR-0001 — Go client and Edits API](adr/0001-androidpublisher-go-client.md)
 - [ADR-0002 — Statelessness and one edit](adr/0002-stateless-single-edit.md)
 - [ADR-0003 — Cobra and layered commands](adr/0003-cobra-command-layout.md)

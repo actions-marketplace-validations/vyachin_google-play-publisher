@@ -10,7 +10,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/version.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/version.Date=$(DATE)
 
-.PHONY: all build test test-race lint fmt cover snapshot clean
+.PHONY: all build test test-race test-scripts lint fmt cover snapshot clean
 
 all: build
 
@@ -20,12 +20,18 @@ build:
 
 test:
 	go test ./...
+	bash scripts/setup_test.sh
 
 test-race:
 	go test -race ./...
 
+test-scripts:
+	bash scripts/setup_test.sh
+
 lint:
 	golangci-lint run
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck scripts/*.sh; else echo "shellcheck not installed: skipping shell tests"; fi
+	@if command -v actionlint >/dev/null 2>&1; then actionlint; else echo "actionlint not installed: skipping workflow lint"; fi
 
 fmt:
 	gofumpt -l -w .
