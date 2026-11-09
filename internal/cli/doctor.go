@@ -63,6 +63,9 @@ func runDoctor(cmd *cobra.Command, a *App, g *globalFlags, flags *doctorFlags) e
 	if flags.Package == "" {
 		return exitcode.Errorf(exitcode.Usage, "--package is required")
 	}
+	if flags.Metadata != "" && flags.AAB == "" {
+		return exitcode.Errorf(exitcode.Usage, "--metadata requires --aab for identity comparison")
+	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), g.Timeout)
 	defer cancel()

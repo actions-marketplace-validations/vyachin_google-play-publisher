@@ -145,6 +145,23 @@ func TestDoctorRequiresPackage(t *testing.T) {
 	}
 }
 
+func TestDoctorMetadataRequiresAAB(t *testing.T) {
+	for _, metadata := range []string{writeMetadata(t, 42), "missing-metadata.json"} {
+		t.Run(metadata, func(t *testing.T) {
+			fake := &playtest.Fake{}
+			_, err := app.Doctor(context.Background(), fake, app.DoctorOptions{
+				Package: "com.example.app", MetadataPath: metadata,
+			})
+			if exitcode.From(err) != exitcode.Usage {
+				t.Fatalf("expected usage error, got %v", err)
+			}
+			if len(fake.Calls) != 0 {
+				t.Fatalf("invalid options reached API: %v", fake.Calls)
+			}
+		})
+	}
+}
+
 func TestStatus(t *testing.T) {
 	fake := &playtest.Fake{
 		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {

@@ -123,7 +123,8 @@ bytes uploaded.
 ### `google-play-publisher doctor` — MVP
 
 Runs read-only checks and changes nothing. Without `--aab` only access and the track are
-checked.
+checked. `--metadata` requires `--aab`, because metadata is compared with the bundle identity;
+passing metadata alone fails with code 2 before authentication or any API request.
 
 | Check | How |
 | --- | --- |

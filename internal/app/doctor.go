@@ -29,6 +29,9 @@ func Doctor(ctx context.Context, api play.API, opts DoctorOptions) ([]Check, err
 	if opts.Package == "" {
 		return nil, exitcode.Errorf(exitcode.Usage, "--package is required")
 	}
+	if opts.MetadataPath != "" && opts.AABPath == "" {
+		return nil, exitcode.Errorf(exitcode.Usage, "--metadata requires --aab for identity comparison")
+	}
 
 	track := opts.Track
 	if track == "" {

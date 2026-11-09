@@ -79,6 +79,26 @@ func TestPublishLocalValidationBeforeClient(t *testing.T) {
 	}
 }
 
+func TestDoctorMetadataRequiresAABBeforeClient(t *testing.T) {
+	factoryCalls := 0
+	app := &cli.App{
+		Stdout: &strings.Builder{}, Stderr: &strings.Builder{},
+		NewAPI: func(context.Context, play.Options) (play.API, error) {
+			factoryCalls++
+			return nil, exitcode.Errorf(exitcode.Auth, "credentials are unavailable")
+		},
+	}
+	code := cli.Execute(context.Background(), app, []string{
+		"doctor", "-p", "com.example.app", "--metadata", "missing-metadata.json", "--json",
+	})
+	if code != int(exitcode.Usage) || factoryCalls != 0 {
+		t.Fatalf("code = %d, factory calls = %d: %s", code, factoryCalls, app.Stderr)
+	}
+	if !strings.Contains(app.Stdout.(*strings.Builder).String(), "--metadata requires --aab") {
+		t.Fatalf("missing metadata diagnostic: %s", app.Stdout)
+	}
+}
+
 func TestPublishValidInputBuildsClientOnce(t *testing.T) {
 	factoryCalls := 0
 	app := &cli.App{
