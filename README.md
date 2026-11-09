@@ -2,6 +2,12 @@
 
 A Go CLI that publishes a signed Android App Bundle (AAB) to Google Play.
 
+[![CI](https://github.com/vyachin/google-play-publisher/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vyachin/google-play-publisher/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/vyachin/google-play-publisher?sort=semver&style=flat-square)](https://github.com/vyachin/google-play-publisher/releases/latest)
+[![Go version](https://img.shields.io/github/go-mod/go-version/vyachin/google-play-publisher?style=flat-square)](https://github.com/vyachin/google-play-publisher/blob/main/go.mod)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/vyachin/google-play-publisher/releases/latest)
+[![AI-assisted](https://img.shields.io/badge/AI--assisted-DeepSeek%20%2B%20Codex-blueviolet?style=flat-square)](#development-disclosure)
+
 **Status:** v0.1.0. Publishing targets the `internal` track.
 
 ## Installation
@@ -211,6 +217,15 @@ production.
 - Managed publishing does not affect `internal`; for other tracks publishing may require
   a manual "Publish changes".
 - The tool does not sign AABs.
+
+## Development disclosure
+
+This project is developed with substantial AI assistance. Much of the implementation, tests and
+documentation was produced with **DeepSeek Harness (deepseek-flash)** and **OpenAI Codex**,
+under human direction and review. The maintainer owns the architecture, release process and
+verification; CI builds and tests every release.
+
+If you are looking for a project without AI involvement, this is not it.
 
 ## Documentation
 
