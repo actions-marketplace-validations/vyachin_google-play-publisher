@@ -179,7 +179,6 @@ func reportManualAction(a *App, g *globalFlags, result appcore.PublishResult, du
 		if writeErr := writePublishJSON(a.Stdout, result, duration); writeErr != nil {
 			return writeErr
 		}
-		printError(a.Stderr, err, exitcode.ManualAction)
 		return &renderedError{err: err}
 	}
 

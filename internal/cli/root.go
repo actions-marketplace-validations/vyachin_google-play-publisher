@@ -48,6 +48,7 @@ func Execute(ctx context.Context, app *App, args []string) int {
 				return int(exitcode.Internal)
 			}
 		}
+		printError(app.Stderr, err, code)
 		return int(code)
 	}
 

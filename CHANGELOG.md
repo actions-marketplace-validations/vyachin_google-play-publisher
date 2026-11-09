@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Failed `--json` commands also print the final error and hint to `stderr`, keeping CI
+  diagnostics visible when the JSON result is redirected to a file.
 - `--json` for a release saved without review (exit code 8) prints the required Play Console
   action on `stderr` while keeping exactly one success object on `stdout`.
 - Connection-refused and unreachable-host/network failures are classified as transient (6)

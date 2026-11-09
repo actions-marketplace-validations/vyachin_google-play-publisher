@@ -47,7 +47,7 @@ func errorObject(t *testing.T, got map[string]any) map[string]any {
 }
 
 func TestPublishJSONUsageError(t *testing.T) {
-	out, _, code := runWithAPI(t, &playtest.Fake{}, "--json", "publish")
+	out, errOut, code := runWithAPI(t, &playtest.Fake{}, "--json", "publish")
 
 	if code != int(exitcode.Usage) {
 		t.Fatalf("code = %d, want %d", code, exitcode.Usage)
@@ -65,21 +65,24 @@ func TestPublishJSONUsageError(t *testing.T) {
 	if !strings.Contains(detail["message"].(string), "--package") {
 		t.Fatalf("message does not explain the problem: %v", detail["message"])
 	}
+	if !strings.Contains(errOut, detail["message"].(string)) || !strings.Contains(errOut, "--help") {
+		t.Fatalf("usage diagnostic missing on stderr: %q", errOut)
+	}
 }
 
 func TestPublishJSONAPIError(t *testing.T) {
-	apiErr := exitcode.Wrap(exitcode.Conflict, &play.APIError{
+	apiErr := exitcode.WithHint(exitcode.Wrap(exitcode.Conflict, &play.APIError{
 		Status:  400,
 		Reason:  "badRequest",
 		Message: "version code 42 has already been used",
-	})
+	}), "bump versionCode if it was already used")
 	fake := &playtest.Fake{
 		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
 			return nil, apiErr
 		},
 	}
 
-	out, _, code := runWithAPI(t, fake, "--json", "publish",
+	out, errOut, code := runWithAPI(t, fake, "--json", "publish",
 		"-p", "com.example.app", "-f", writeAAB(t))
 
 	if code != int(exitcode.Conflict) {
@@ -92,6 +95,11 @@ func TestPublishJSONAPIError(t *testing.T) {
 	}
 	if detail["apiCode"] != float64(400) || detail["reason"] != "badRequest" {
 		t.Fatalf("API metadata is lost: %v", detail)
+	}
+	if strings.Count(errOut, "google-play-publisher: ") != 1 ||
+		!strings.Contains(errOut, detail["message"].(string)) ||
+		!strings.Contains(errOut, "hint: "+detail["hint"].(string)) {
+		t.Fatalf("expected error and hint exactly once on stderr: %q", errOut)
 	}
 }
 
@@ -142,7 +150,7 @@ func TestDoctorJSONErrorSingleObject(t *testing.T) {
 		},
 	}
 
-	out, _, code := runWithAPI(t, fake, "--json", "doctor", "-p", "com.example.app")
+	out, errOut, code := runWithAPI(t, fake, "--json", "doctor", "-p", "com.example.app")
 
 	if code != int(exitcode.Auth) {
 		t.Fatalf("code = %d, want %d", code, exitcode.Auth)
@@ -156,6 +164,9 @@ func TestDoctorJSONErrorSingleObject(t *testing.T) {
 	detail := errorObject(t, got)
 	if detail["code"] != "auth" {
 		t.Fatalf("unexpected error object: %v", detail)
+	}
+	if strings.Count(errOut, "google-play-publisher: ") != 1 || !strings.Contains(errOut, "permission denied") {
+		t.Fatalf("doctor diagnostic missing or duplicated on stderr: %q", errOut)
 	}
 }
 
@@ -203,6 +214,9 @@ func TestInterruptedJSON(t *testing.T) {
 	detail := errorObject(t, decodeSingleObject(t, app.Stdout.(*bytes.Buffer).String()))
 	if detail["code"] != "interrupted" {
 		t.Fatalf("unexpected error object: %v", detail)
+	}
+	if !strings.Contains(app.Stderr.(*bytes.Buffer).String(), "operation interrupted") {
+		t.Fatal("interruption diagnostic missing on stderr")
 	}
 }
 

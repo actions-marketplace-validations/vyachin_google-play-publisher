@@ -244,7 +244,10 @@ Fields:
 | `interrupted` | 130 |
 | `internal` | 1 |
 
-With `--json`, a failed command writes exactly one object to `stdout` and logs to `stderr`.
+With `--json`, a failed command writes exactly one object to `stdout`. Logs and the final
+human-readable error (including its hint, when available) go to `stderr`, so redirecting
+`stdout` to `publish.json` does not hide the failure reason from CI logs. The exit code and
+JSON schema are unchanged.
 `doctor` reports its checks and the `error` object in that single object. When the release was
 saved but needs manual submission (exit code 8), `stdout` contains the success object with
 `"review": "notSent"`; the action for the operator is on `stderr`.
