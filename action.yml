@@ -87,3 +87,7 @@ runs:
         GPP_TIMEOUT: ${{ inputs.timeout }}
         GPP_DEBUG: ${{ inputs.debug }}
       run: bash "$GITHUB_ACTION_PATH/scripts/publish.sh"
+
+branding:
+  icon: upload
+  color: green
