@@ -505,3 +505,7 @@ and update the matching behavior/error document under `docs/`.
   despite a missing result. Return and propagate output errors consistently; keep
   saved-release context and clearly define precedence over manual-action errors.
   Add failing-writer tests for text output without rerunning a publication.
+
+**Status 2026-11-09:** R11–R15 and I5–I6 are fixed with regression tests; I3 (live
+verification) remains open until S0 access exists. The fixes are listed in the Unreleased
+section of [CHANGELOG.md](CHANGELOG.md).
