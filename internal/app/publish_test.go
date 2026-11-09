@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -58,21 +57,6 @@ func writeBundleFiles(t *testing.T, files map[string]string) string {
 	}
 	if err := f.Close(); err != nil {
 		t.Fatalf("close file: %v", err)
-	}
-	return path
-}
-
-func writeMetadata(t *testing.T, versionCode int64) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "output-metadata.json")
-	body := `{
-		"artifactType": {"type": "BUNDLE"},
-		"applicationId": "com.example.app",
-		"elements": [{"type": "SINGLE", "versionCode": ` + strconv.FormatInt(versionCode, 10) + `}]
-	}`
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatalf("write metadata: %v", err)
 	}
 	return path
 }
@@ -173,7 +157,6 @@ func TestPublishSkipExistingVersion(t *testing.T) {
 	publisher := app.NewPublisher(fake, nil)
 
 	opts := baseOptions(writeAAB(t))
-	opts.MetadataPath = writeMetadata(t, 42)
 	opts.IfExists = "skip"
 
 	result, err := publisher.Publish(context.Background(), opts)
@@ -199,7 +182,6 @@ func TestPublishFailExistingVersion(t *testing.T) {
 	publisher := app.NewPublisher(fake, nil)
 
 	opts := baseOptions(writeAAB(t))
-	opts.MetadataPath = writeMetadata(t, 42)
 
 	_, err := publisher.Publish(context.Background(), opts)
 	if err == nil {
@@ -552,54 +534,6 @@ func TestPublishUploadErrorDeletesEdit(t *testing.T) {
 	}
 }
 
-func TestPublishMetadataVersionMismatch(t *testing.T) {
-	publisher := app.NewPublisher(&playtest.Fake{}, nil)
-
-	opts := baseOptions(writeAAB(t))
-	opts.MetadataPath = writeMetadata(t, 41)
-
-	_, err := publisher.Publish(context.Background(), opts)
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	if got := exitcode.From(err); got != exitcode.Usage {
-		t.Fatalf("code = %d, want %d", got, exitcode.Usage)
-	}
-}
-
-func TestPrepareRejectsConflictingVersionCodes(t *testing.T) {
-	aab := writeAABWithIdentity(t, "com.example.app", 41, "1.0.41")
-
-	tests := []struct {
-		name        string
-		metaCode    int64
-		versionCode int64
-		wantCode    exitcode.Code
-	}{
-		{"conflict", 41, 42, exitcode.Usage},
-		{"matching", 41, 41, exitcode.OK},
-		{"only metadata", 41, 0, exitcode.OK},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			opts := baseOptions(aab)
-			opts.MetadataPath = writeMetadata(t, test.metaCode)
-			opts.VersionCode = test.versionCode
-
-			prepared, err := app.Prepare(opts)
-			defer func() { _ = prepared.Close() }()
-			if got := exitcode.From(err); got != test.wantCode {
-				t.Fatalf("code = %d, want %d (err: %v)", got, test.wantCode, err)
-			}
-			if test.wantCode == exitcode.Usage &&
-				!strings.Contains(err.Error(), "metadata versionCode 41 does not match --version-code 42") {
-				t.Fatalf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
 func TestPrepareValidatesPolicyOptions(t *testing.T) {
 	aab := writeAAB(t)
 
@@ -627,26 +561,6 @@ func TestPrepareValidatesPolicyOptions(t *testing.T) {
 				t.Fatalf("code = %d, want %d (err: %v)", exitcode.From(err), exitcode.Usage, err)
 			}
 		})
-	}
-}
-
-func TestPrepareResolvesPackageFromMetadata(t *testing.T) {
-	opts := baseOptions(writeAAB(t))
-	opts.Package = ""
-	opts.MetadataPath = writeMetadata(t, 42)
-
-	prepared, err := app.Prepare(opts)
-	if err != nil {
-		t.Fatalf("Prepare: %v", err)
-	}
-
-	result, err := app.NewPublisher(&playtest.Fake{}, nil).
-		PublishPrepared(context.Background(), prepared)
-	if err != nil {
-		t.Fatalf("PublishPrepared: %v", err)
-	}
-	if result.Package != "com.example.app" {
-		t.Fatalf("package = %q, want com.example.app", result.Package)
 	}
 }
 
@@ -807,7 +721,6 @@ func TestPrepareResolvesPackageAndVersionFromAAB(t *testing.T) {
 	opts := baseOptions(writeAAB(t))
 	opts.Package = ""
 	opts.VersionCode = 0
-	opts.MetadataPath = ""
 
 	prepared, err := app.Prepare(opts)
 	if err != nil {
@@ -834,21 +747,7 @@ func TestPrepareRejectsAABVersionMismatch(t *testing.T) {
 	}
 }
 
-func TestPrepareRejectsMetadataAABVersionMismatch(t *testing.T) {
-	opts := baseOptions(writeAAB(t))
-	opts.MetadataPath = writeMetadata(t, 41)
-
-	prepared, err := app.Prepare(opts)
-	defer func() { _ = prepared.Close() }()
-	if exitcode.From(err) != exitcode.Usage {
-		t.Fatalf("code = %d, want %d (err: %v)", exitcode.From(err), exitcode.Usage, err)
-	}
-	if !strings.Contains(err.Error(), "metadata versionCode 41 does not match AAB versionCode 42") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestPublishSkipWithoutMetadata(t *testing.T) {
+func TestPublishSkipExistingVersionWithoutAssertions(t *testing.T) {
 	fake := &playtest.Fake{
 		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
 			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil

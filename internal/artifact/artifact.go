@@ -1,4 +1,4 @@
-// Package artifact inspects Android App Bundle files and AGP build metadata.
+// Package artifact inspects Android App Bundle files.
 package artifact
 
 import (

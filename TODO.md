@@ -1338,6 +1338,8 @@ the single input for store presence, listings, images, testers and release notes
 - [x] `promote`: replace `--changelog-dir` with `--metadata-dir`; apply listings, images and
       testers in the promotion edit and read changelogs only with `--version-code`; the JSON
       result reports `metadata` counts.
+- [x] Remove `--metadata` (AGP `output-metadata.json`) from `publish` and `doctor`, together
+      with `artifact.ReadMetadata`; the AAB manifest is the only identity source.
 - [x] Publish action: add `metadata-dir`; keep `changelog-dir` as a deprecated alias that maps
       to `--metadata-dir`; reject both inputs together.
 - [x] Tests: changelog-only metadata directories, removed publish conflict, promote metadata

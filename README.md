@@ -46,7 +46,7 @@ google-play-publisher status -p com.example.app -t internal
 The CLI reads `package`, `versionCode` and `versionName` from the AAB manifest. Passing
 `--package` or `--version-code` is optional and acts as an assertion: a value that does not
 match the AAB fails with exit code 2 before any network call. `doctor` applies the same
-manifest checks when `--aab` is passed, including `--metadata` consistency.
+manifest checks when `--aab` is passed.
 
 `--json` prints a machine-readable result to stdout; logs go to stderr:
 
@@ -71,10 +71,9 @@ google-play-publisher publish -f app-release.aab \
 ```
 
 The AAB version code selects the changelog files, so `--version-code` is not required; when
-supplied it is checked against the AAB and the upload. `--metadata` remains an optional legacy
-cross-check. Locales without a file for that version code are skipped; when the directory
-contains neither store metadata nor a changelog for the AAB version code, the command fails
-with exit code 2 before any edit is created. `--release-name` is optional; when it is empty,
+supplied it is checked against the AAB and the upload. Locales without a file for that version
+code are skipped; when the directory contains neither store metadata nor a changelog for the
+AAB version code, the command fails with exit code 2 before any edit is created. `--release-name` is optional; when it is empty,
 Play generates the name from the AAB version name.
 
 ## Store metadata

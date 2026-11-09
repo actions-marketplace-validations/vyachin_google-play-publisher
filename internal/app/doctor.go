@@ -18,10 +18,9 @@ type Check struct {
 
 // DoctorOptions describe a doctor run.
 type DoctorOptions struct {
-	Package      string
-	AABPath      string
-	MetadataPath string
-	Track        string
+	Package string
+	AABPath string
+	Track   string
 }
 
 // ValidateDoctorOptions rejects options that must fail before any API request.
@@ -30,9 +29,6 @@ type DoctorOptions struct {
 func ValidateDoctorOptions(opts DoctorOptions) error {
 	if opts.Package == "" {
 		return exitcode.Errorf(exitcode.Usage, "--package is required")
-	}
-	if opts.MetadataPath != "" && opts.AABPath == "" {
-		return exitcode.Errorf(exitcode.Usage, "--metadata requires --aab for identity comparison")
 	}
 	return nil
 }
@@ -91,7 +87,7 @@ func Doctor(ctx context.Context, api play.API, opts DoctorOptions) ([]Check, err
 
 	// Doctor checks the same manifest identity as publish: a bundle for
 	// another application must not be reported as ready for this one.
-	resolved, err := validateIdentity(bundle.Identity, opts.Package, 0, nil)
+	resolved, err := validateIdentity(bundle.Identity, opts.Package, 0)
 	if err != nil {
 		checks = append(checks, Check{Name: "identity", Detail: err.Error()})
 		return checks, err
@@ -102,23 +98,6 @@ func Doctor(ctx context.Context, api play.API, opts DoctorOptions) ([]Check, err
 		Detail: fmt.Sprintf("applicationId %s, versionCode %d, versionName %s",
 			resolved.Package, resolved.VersionCode, resolved.VersionName),
 	})
-
-	if opts.MetadataPath != "" {
-		meta, err := artifact.ReadMetadata(opts.MetadataPath)
-		if err != nil {
-			checks = append(checks, Check{Name: "metadata", Detail: err.Error()})
-			return checks, err
-		}
-		if _, err := validateIdentity(bundle.Identity, opts.Package, 0, &meta); err != nil {
-			checks = append(checks, Check{Name: "metadata", Detail: err.Error()})
-			return checks, err
-		}
-		checks = append(checks, Check{
-			Name:   "metadata",
-			OK:     true,
-			Detail: fmt.Sprintf("applicationId %s, versionCode %d", meta.ApplicationID, meta.VersionCode),
-		})
-	}
 
 	return checks, nil
 }

@@ -34,7 +34,6 @@ const (
 type PublishOptions struct {
 	Package                 string
 	AABPath                 string
-	MetadataPath            string
 	MetadataDir             string
 	VersionCode             int64
 	Track                   string
@@ -114,12 +113,11 @@ func NewPublisher(api play.API, logger *slog.Logger, opts ...PublisherOption) *P
 // were validated by Prepare. The fields are unexported so PublishPrepared
 // cannot receive a different set of options than the one that was validated.
 type Prepared struct {
-	opts     PublishOptions
-	plan     release.Plan
-	bundle   *artifact.Bundle
-	metadata *artifact.Metadata
-	store    *storemeta.Metadata
-	state    *preparedState
+	opts   PublishOptions
+	plan   release.Plan
+	bundle *artifact.Bundle
+	store  *storemeta.Metadata
+	state  *preparedState
 }
 
 // preparedState is shared by copies of Prepared so closing or consuming one
@@ -175,9 +173,9 @@ func (p Prepared) begin() error {
 }
 
 // Prepare validates every local input, including policy options and package
-// resolution from metadata, without constructing an API client. A malformed
-// package, track, status, rollout, notes, AAB, metadata pair or policy fails
-// before authentication or any Play call.
+// resolution from the AAB, without constructing an API client. A malformed
+// package, track, status, rollout, notes, AAB, metadata directory or policy
+// fails before authentication or any Play call.
 func Prepare(opts PublishOptions) (Prepared, error) {
 	exists, err := release.ParseExistsPolicy(string(opts.IfExists))
 	if err != nil {
@@ -193,11 +191,6 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 		return Prepared{}, exitcode.Errorf(exitcode.Usage, "--aab is required")
 	}
 
-	meta, err := readMetadata(opts)
-	if err != nil {
-		return Prepared{}, err
-	}
-
 	bundle, err := artifact.Open(opts.AABPath)
 	if err != nil {
 		return Prepared{}, err
@@ -209,7 +202,7 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 		}
 	}()
 
-	resolved, err := validateIdentity(bundle.Identity, opts.Package, opts.VersionCode, meta)
+	resolved, err := validateIdentity(bundle.Identity, opts.Package, opts.VersionCode)
 	if err != nil {
 		return Prepared{}, err
 	}
@@ -257,17 +250,16 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 
 	closed = true
 	return Prepared{
-		opts:     opts,
-		plan:     plan,
-		bundle:   bundle,
-		metadata: meta,
-		store:    store,
-		state:    &preparedState{valid: true},
+		opts:   opts,
+		plan:   plan,
+		bundle: bundle,
+		store:  store,
+		state:  &preparedState{valid: true},
 	}, nil
 }
 
 // Package returns the resolved application id. It is read-only and exists so
-// the CLI can report the metadata-resolved package in error output.
+// the CLI can report the AAB-resolved package in error output.
 func (p Prepared) Package() string { return p.opts.Package }
 
 // validatePublishOptions checks invariants that do not depend on the AAB or
@@ -313,7 +305,7 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 	}
 
 	opts := prepared.opts
-	plan, meta := prepared.plan, prepared.metadata
+	plan := prepared.plan
 	info := prepared.bundle.Info
 	defer func() { _ = prepared.Close() }()
 
@@ -329,8 +321,8 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 	if err != nil {
 		return PublishResult{}, err
 	}
-	if known := knownVersionCode(opts, meta); known > 0 && versionReleased(releases, known) {
-		return p.alreadyReleased(opts, plan, known, info, prepared.bundle.Identity.VersionName)
+	if opts.VersionCode > 0 && versionReleased(releases, opts.VersionCode) {
+		return p.alreadyReleased(opts, plan, opts.VersionCode, info, prepared.bundle.Identity.VersionName)
 	}
 
 	editID, err := p.api.CreateEdit(ctx, plan.Package)
@@ -368,11 +360,6 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 			bundle.SHA256, info.SHA256)
 	}
 
-	if meta != nil && bundle.VersionCode != meta.VersionCode {
-		return PublishResult{}, exitcode.Errorf(exitcode.Usage,
-			"metadata versionCode %d does not match uploaded versionCode %d",
-			meta.VersionCode, bundle.VersionCode)
-	}
 	if opts.VersionCode > 0 && bundle.VersionCode != opts.VersionCode {
 		return PublishResult{}, exitcode.Errorf(exitcode.Usage,
 			"versionCode %d does not match uploaded versionCode %d",
@@ -803,44 +790,8 @@ func (p *Publisher) deleteEdit(pkg, editID string) error {
 	return nil
 }
 
-func readMetadata(opts PublishOptions) (*artifact.Metadata, error) {
-	if opts.MetadataPath == "" {
-		return nil, nil
-	}
-
-	meta, err := artifact.ReadMetadata(opts.MetadataPath)
-	if err != nil {
-		return nil, err
-	}
-	if opts.Package != "" {
-		if err := meta.VerifyPackage(opts.Package); err != nil {
-			return nil, err
-		}
-	}
-	// Both values describe the same artifact, so a contradiction is a local
-	// input error. Reject it before an edit is created or a token is fetched.
-	if opts.VersionCode > 0 && meta.VersionCode != opts.VersionCode {
-		return nil, exitcode.Errorf(exitcode.Usage,
-			"metadata versionCode %d does not match --version-code %d",
-			meta.VersionCode, opts.VersionCode)
-	}
-	return &meta, nil
-}
-
 // uploadedSHA256 returns the hash of the bytes Play received, falling back to
 // the locally inspected value when the API omits it.
-// knownVersionCode returns the version code declared by the caller, if any.
-// --version-code wins over metadata because it is the explicit declaration.
-func knownVersionCode(opts PublishOptions, meta *artifact.Metadata) int64 {
-	if opts.VersionCode > 0 {
-		return opts.VersionCode
-	}
-	if meta != nil {
-		return meta.VersionCode
-	}
-	return 0
-}
-
 func uploadedSHA256(info artifact.Info, bundle play.BundleInfo) string {
 	if bundle.SHA256 != "" {
 		return bundle.SHA256

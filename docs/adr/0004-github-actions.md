@@ -91,6 +91,7 @@ Rules:
   when supplied, they must equal the AAB values, otherwise exit code 2 before API construction.
 - `--metadata` stays supported as a legacy cross-check: its package and version code must
   agree with the AAB; a mismatch is a local input error.
+  **Superseded:** `--metadata` was removed; the AAB manifest is the only identity source.
 - `--changelog-dir` no longer requires `--version-code`; the AAB version code selects the
   files. When `--version-code` is supplied it is still verified against both the AAB and the
   uploaded bundle.

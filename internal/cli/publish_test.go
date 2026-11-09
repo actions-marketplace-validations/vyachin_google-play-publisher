@@ -143,18 +143,6 @@ func writeBundleFiles(t *testing.T, files map[string]string) string {
 	return path
 }
 
-func writeMetadata(t *testing.T, versionCode int64) string {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "output-metadata.json")
-	body := `{"artifactType":{"type":"BUNDLE"},"applicationId":"com.example.app",` +
-		`"elements":[{"type":"SINGLE","versionCode":` + strconv.FormatInt(versionCode, 10) + `}]}`
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatalf("write metadata: %v", err)
-	}
-	return path
-}
-
 func TestPublishJSON(t *testing.T) {
 	out, errOut, code := runWithAPI(t, &playtest.Fake{}, "--json", "publish",
 		"-p", "com.example.app", "-f", writeAAB(t), "-t", "internal")
@@ -195,23 +183,6 @@ func TestPublishPackageFromAAB(t *testing.T) {
 	}
 	if got["package"] != "com.example.app" {
 		t.Fatalf("package = %v, want the AAB applicationId", got["package"])
-	}
-}
-
-func TestPublishPackageFromMetadata(t *testing.T) {
-	out, errOut, code := runWithAPI(t, &playtest.Fake{}, "--json", "publish",
-		"-f", writeAAB(t), "--metadata", writeMetadata(t, 42))
-
-	if code != int(exitcode.OK) {
-		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut)
-	}
-
-	var got map[string]any
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("output is not JSON: %v (%q)", err, out)
-	}
-	if got["package"] != "com.example.app" {
-		t.Fatalf("package = %v, want the metadata applicationId", got["package"])
 	}
 }
 
@@ -281,8 +252,7 @@ func TestPublishSkipJSON(t *testing.T) {
 		},
 	}
 	out, errOut, code := runWithAPI(t, fake, "--json", "publish",
-		"-p", "com.example.app", "-f", writeAAB(t),
-		"--metadata", writeMetadata(t, 42), "--if-exists", "skip")
+		"-p", "com.example.app", "-f", writeAAB(t), "--if-exists", "skip")
 
 	if code != int(exitcode.OK) {
 		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut)

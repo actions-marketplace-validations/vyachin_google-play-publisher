@@ -18,7 +18,6 @@ import (
 type publishFlags struct {
 	Package                 string
 	AAB                     string
-	Metadata                string
 	Track                   string
 	Status                  string
 	Rollout                 float64
@@ -85,7 +84,6 @@ optional assertions. The default track is "internal".`,
 	f := cmd.Flags()
 	f.StringVarP(&flags.Package, "package", "p", "", "application id (default: from the AAB)")
 	f.StringVarP(&flags.AAB, "aab", "f", "", "path to a signed .aab file")
-	f.StringVar(&flags.Metadata, "metadata", "", "path to AGP output-metadata.json")
 	f.StringVarP(&flags.Track, "track", "t", "internal", "release track")
 	f.StringVar(&flags.Status, "status", "completed", "release status: draft, inProgress or completed")
 	f.Float64Var(&flags.Rollout, "rollout", 0, "staged rollout fraction between 0 and 1")
@@ -139,7 +137,6 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 	opts := appcore.PublishOptions{
 		Package:                 flags.Package,
 		AABPath:                 flags.AAB,
-		MetadataPath:            flags.Metadata,
 		MetadataDir:             flags.MetadataDir,
 		VersionCode:             flags.VersionCode,
 		Track:                   flags.Track,

@@ -28,9 +28,8 @@ func TestDoctorSuccess(t *testing.T) {
 	}
 
 	checks, err := app.Doctor(context.Background(), fake, app.DoctorOptions{
-		Package:      "com.example.app",
-		AABPath:      signedAAB(t),
-		MetadataPath: writeMetadata(t, 42),
+		Package: "com.example.app",
+		AABPath: signedAAB(t),
 	})
 	if err != nil {
 		t.Fatalf("Doctor: %v", err)
@@ -40,7 +39,7 @@ func TestDoctorSuccess(t *testing.T) {
 	for _, check := range checks {
 		byName[check.Name] = check
 	}
-	for _, name := range []string{"api", "track", "artifact", "signature", "identity", "metadata"} {
+	for _, name := range []string{"api", "track", "artifact", "signature", "identity"} {
 		check, ok := byName[name]
 		if !ok {
 			t.Fatalf("missing %q check in %#v", name, checks)
@@ -88,20 +87,6 @@ func TestDoctorAPIError(t *testing.T) {
 	}
 }
 
-func TestDoctorMetadataMismatch(t *testing.T) {
-	_, err := app.Doctor(context.Background(), &playtest.Fake{}, app.DoctorOptions{
-		Package:      "com.example.app",
-		AABPath:      signedAAB(t),
-		MetadataPath: writeMetadata(t, 43),
-	})
-	if err == nil {
-		t.Fatal("expected an error")
-	}
-	if got := exitcode.From(err); got != exitcode.Usage {
-		t.Fatalf("code = %d, want %d", got, exitcode.Usage)
-	}
-}
-
 func TestDoctorRejectsWrongPackage(t *testing.T) {
 	checks, err := app.Doctor(context.Background(), &playtest.Fake{}, app.DoctorOptions{
 		Package: "com.other.app",
@@ -142,23 +127,6 @@ func TestDoctorRequiresPackage(t *testing.T) {
 	}
 	if got := exitcode.From(err); got != exitcode.Usage {
 		t.Fatalf("code = %d, want %d", got, exitcode.Usage)
-	}
-}
-
-func TestDoctorMetadataRequiresAAB(t *testing.T) {
-	for _, metadata := range []string{writeMetadata(t, 42), "missing-metadata.json"} {
-		t.Run(metadata, func(t *testing.T) {
-			fake := &playtest.Fake{}
-			_, err := app.Doctor(context.Background(), fake, app.DoctorOptions{
-				Package: "com.example.app", MetadataPath: metadata,
-			})
-			if exitcode.From(err) != exitcode.Usage {
-				t.Fatalf("expected usage error, got %v", err)
-			}
-			if len(fake.Calls) != 0 {
-				t.Fatalf("invalid options reached API: %v", fake.Calls)
-			}
-		})
 	}
 }
 

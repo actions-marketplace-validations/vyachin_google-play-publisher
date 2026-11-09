@@ -28,7 +28,7 @@ internal/cli/                cobra: root + commands (thin layer, one file per co
   status.go                  flags → app.Status
 internal/app/                use cases without cobra and without androidpublisher
 internal/play/               thin wrapper over androidpublisher: interface + client + error mapping
-internal/artifact/           artifact inspection: ZIP signature, output-metadata.json, sha256
+internal/artifact/           artifact inspection: ZIP signature, manifest identity, sha256
 internal/release/            domain: Plan, status/rollout/notes validation, track names
 internal/storemeta/          metadata tree: listings, images, testers, read/write and validation
 internal/retry/              (reserved) backoff policy and error classification
@@ -117,17 +117,14 @@ sequenceDiagram
   errors;
 - the package is valid (dot-separated segments) and comes from the AAB; `--package` is an
   optional assertion;
-- when `--metadata output-metadata.json` is passed, its `applicationId` and `versionCode`
-  must equal the AAB values (legacy cross-check). AGP does not produce this file for
-  `bundleRelease`, so AAB pipelines do not need it;
 - the track exists in the track list (custom closed-track creation is outside the MVP);
 - if the AAB `versionCode` is already present on the target track, apply `--if-exists`
-  (`fail` by default); `skip` therefore works without a metadata sidecar;
+  (`fail` by default); `skip` works from the AAB version code alone;
 - status and fraction are consistent: `inProgress` requires `0 < rollout < 1`, `completed`
   takes no fraction.
 
 Local validation runs before the API client is constructed: an invalid package, track,
-status, rollout, notes, AAB or metadata pair fails with code 2 without authentication and
+status, rollout, notes, AAB or metadata directory fails with code 2 without authentication and
 without a network call. Retries of the remaining safely repeatable calls are bounded (see
 [05-errors.md](05-errors.md#3-retry-policy)).
 
@@ -278,10 +275,9 @@ reused for a new release.
 
 Republishing the same AAB after a **successful** commit is not attempted: it is a separate
 release with the same version code, which Play rejects. The AAB version code is known before
-uploading, so the tool detects this and applies `--if-exists`; `--version-code` and
-`--metadata`, when supplied, are assertions that must agree with the AAB, otherwise the run
-stops with code 2 before any API call. Without a readable AAB manifest the run also stops
-locally.
+uploading, so the tool detects this and applies `--if-exists`; `--version-code`, when supplied,
+is an assertion that must agree with the AAB, otherwise the run stops with code 2 before any API
+call. Without a readable AAB manifest the run also stops locally.
 
 ## 8. Timeouts and cancellation
 

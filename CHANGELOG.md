@@ -47,6 +47,12 @@
   promotion edit. Changelogs are read only together with `--version-code`; the JSON result
   gains the `metadata` counts when the flag is used.
 
+### Removed
+
+- `--metadata` (AGP `output-metadata.json`) was removed from `publish` and `doctor`; the AAB
+  manifest is the only identity source. `--package` and `--version-code` remain optional
+  assertions, and `artifact.ReadMetadata` was deleted.
+
 ### Fixed
 
 - The Play image type for the app icon was spelled `appIcon`, but `edits.images` expects

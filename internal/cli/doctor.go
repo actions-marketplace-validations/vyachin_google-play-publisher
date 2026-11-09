@@ -13,10 +13,9 @@ import (
 )
 
 type doctorFlags struct {
-	Package  string
-	AAB      string
-	Metadata string
-	Track    string
+	Package string
+	AAB     string
+	Track   string
 }
 
 type doctorCheckOutput struct {
@@ -40,9 +39,9 @@ func newDoctorCmd(a *App, g *globalFlags) *cobra.Command {
 		Use:     "doctor",
 		GroupID: "inspect",
 		Short:   "Check Play access, track and AAB before publishing",
-		Long:    "Run read-only checks: API access, target track, AAB shape, signature, manifest identity and AGP metadata.",
+		Long:    "Run read-only checks: API access, target track, AAB shape, signature and manifest identity.",
 		Example: `  google-play-publisher doctor -p com.example.app
-  google-play-publisher doctor -p com.example.app -f app-release.aab --metadata output-metadata.json`,
+  google-play-publisher doctor -p com.example.app -f app-release.aab`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDoctor(cmd, a, g, flags)
@@ -52,7 +51,6 @@ func newDoctorCmd(a *App, g *globalFlags) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVarP(&flags.Package, "package", "p", "", "application id")
 	f.StringVarP(&flags.AAB, "aab", "f", "", "path to a signed .aab file")
-	f.StringVar(&flags.Metadata, "metadata", "", "path to AGP output-metadata.json")
 	f.StringVarP(&flags.Track, "track", "t", "internal", "release track")
 
 	registerTrackCompletion(cmd)
@@ -61,10 +59,9 @@ func newDoctorCmd(a *App, g *globalFlags) *cobra.Command {
 
 func runDoctor(cmd *cobra.Command, a *App, g *globalFlags, flags *doctorFlags) error {
 	opts := appcore.DoctorOptions{
-		Package:      flags.Package,
-		AABPath:      flags.AAB,
-		MetadataPath: flags.Metadata,
-		Track:        flags.Track,
+		Package: flags.Package,
+		AABPath: flags.AAB,
+		Track:   flags.Track,
 	}
 	// Fail before the client is built: bad options must return code 2 even
 	// when credentials are unavailable. Doctor validates again for direct

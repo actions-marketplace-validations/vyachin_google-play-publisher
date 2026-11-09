@@ -41,13 +41,6 @@ func TestPublishLocalValidationBeforeClient(t *testing.T) {
 		{"version code does not match AAB", []string{
 			"publish", "-p", "com.example.app", "-f", aab, "--version-code", "41",
 		}},
-		{"metadata mismatch", []string{
-			"publish", "-p", "com.example.other", "-f", aab, "--metadata", writeMetadata(t, 42),
-		}},
-		{"metadata version conflict", []string{
-			"publish", "-p", "com.example.app", "-f", aab,
-			"--metadata", writeMetadata(t, 41), "--version-code", "42", "--if-exists", "skip",
-		}},
 		{"too long changelog", []string{
 			"publish", "-p", "com.example.app", "-f", aab,
 			"--metadata-dir", changelogDir, "--version-code", "42",
@@ -76,26 +69,6 @@ func TestPublishLocalValidationBeforeClient(t *testing.T) {
 				t.Fatalf("API factory called %d times, want 0", factoryCalls)
 			}
 		})
-	}
-}
-
-func TestDoctorMetadataRequiresAABBeforeClient(t *testing.T) {
-	factoryCalls := 0
-	app := &cli.App{
-		Stdout: &strings.Builder{}, Stderr: &strings.Builder{},
-		NewAPI: func(context.Context, play.Options) (play.API, error) {
-			factoryCalls++
-			return nil, exitcode.Errorf(exitcode.Auth, "credentials are unavailable")
-		},
-	}
-	code := cli.Execute(context.Background(), app, []string{
-		"doctor", "-p", "com.example.app", "--metadata", "missing-metadata.json", "--json",
-	})
-	if code != int(exitcode.Usage) || factoryCalls != 0 {
-		t.Fatalf("code = %d, factory calls = %d: %s", code, factoryCalls, app.Stderr)
-	}
-	if !strings.Contains(app.Stdout.(*strings.Builder).String(), "--metadata requires --aab") {
-		t.Fatalf("missing metadata diagnostic: %s", app.Stdout)
 	}
 }
 

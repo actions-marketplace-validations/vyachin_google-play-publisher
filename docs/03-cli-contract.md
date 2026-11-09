@@ -77,7 +77,6 @@ google-play-publisher publish --package com.example.app \
 | `--on-in-review` | enum | `error` | `error` → `ERROR_IF_IN_REVIEW`; `replace` → `CANCEL_IN_REVIEW_AND_SUBMIT` |
 | `--if-exists` | enum | `fail` | `fail` \| `skip` — behavior when the version code is already on the track |
 | `--dry-run` | bool | `false` | Full run without `commit`, then delete the edit |
-| `--metadata` | path | — | AGP `output-metadata.json`: `applicationId`, `versionCode`; optional |
 | `--in-app-update-priority` | int | `0` | In-app update priority, `0` (disabled) … `5` (highest); cannot change once a release is rolled out |
 | `--country` | list | — | Restrict the release to CLDR country codes (repeatable, `DE` or `DE,FR`); only for an `inProgress` release on `production` |
 | `--include-rest-of-world` | bool | `false` | Also target every country not listed in `--country`; requires at least one `--country` |
@@ -88,13 +87,6 @@ allowed. A directory may contain only `changelogs/` or only listings/images/test
 contains neither store metadata nor a changelog for the AAB version code, the command fails with
 exit code 2 before any edit is created. `--version-code` is an optional assertion: when supplied
 it must equal the AAB version code, and the uploaded bundle is checked against it.
-`--metadata` remains an optional legacy cross-check: its `applicationId` and `versionCode`
-must equal the AAB values; a mismatch is a local input error (exit code 2) rejected before the
-API client is created, even with `--if-exists=skip`.
-
-AGP does not write `build/outputs/bundle/<variant>/output-metadata.json` for
-`bundleRelease` (the file stays under `build/intermediates/bundle_ide_model/...`), so
-AAB pipelines should not rely on `--metadata`.
 
 The release identity comes from `base/manifest/AndroidManifest.xml`: `package`,
 `android:versionCode` and `android:versionName`. The tool rejects a malformed or incomplete
@@ -113,7 +105,6 @@ Combination validation (exit code 2 on violation):
 - `--rollout` outside `(0,1)`, including `NaN` and infinities → error;
 - `--version-code` different from the AAB version code → error;
 - `--package` different from the AAB package → error;
-- `--metadata` values different from the AAB values → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error;
 - `--in-app-update-priority` outside `0..5` → error;
 - `--country` that is not a two-letter CLDR code, or `--include-rest-of-world` without
@@ -200,8 +191,7 @@ google-play-publisher publish -f app-release.aab -t internal --metadata-dir meta
 ### `google-play-publisher doctor` — MVP
 
 Runs read-only checks and changes nothing. Without `--aab` only access and the track are
-checked. `--metadata` requires `--aab`, because metadata is compared with the bundle identity;
-passing metadata alone fails with code 2 before authentication or any API request.
+checked; with `--aab` the artifact, signature and manifest identity are checked as well.
 
 | Check | How |
 | --- | --- |
@@ -210,7 +200,6 @@ passing metadata alone fails with code 2 before authentication or any API reques
 | `artifact` | ZIP with `BundleConfig.pb` and a readable `base/manifest/AndroidManifest.xml`; size and sha256 |
 | `signature` | JAR signature present (`META-INF/*.RSA` / `*.EC` / `*.DSA`); absent → code 7 |
 | `identity` | manifest `package` and `versionCode`; `--package` must match the AAB, otherwise code 2 |
-| `metadata` | when `--metadata` is passed: `applicationId` and `versionCode` match the AAB, otherwise code 2 |
 
 ### `google-play-publisher status` — MVP (read-only)
 
