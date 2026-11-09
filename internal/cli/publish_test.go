@@ -59,6 +59,37 @@ func TestPublishCanceledCommitPreservesDiagnostic(t *testing.T) {
 	}
 }
 
+func TestPublishCanceledPreflightUsesGenericInterruption(t *testing.T) {
+	for _, jsonOutput := range []bool{false, true} {
+		t.Run(strconv.FormatBool(jsonOutput), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			fake := &playtest.Fake{TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+				cancel()
+				// This is what play.mapError returns for a canceled request.
+				return nil, exitcode.Wrap(exitcode.Interrupted, context.Canceled)
+			}}
+			args := []string{"publish", "-f", writeAAB(t)}
+			if jsonOutput {
+				args = append(args, "--json")
+			}
+			out, errOut, code := runWithAPIAndContext(ctx, t, fake, args...)
+			if code != int(exitcode.Interrupted) {
+				t.Fatalf("code = %d, want 130: %s", code, errOut)
+			}
+			if !strings.Contains(errOut, "operation interrupted") || strings.Contains(errOut, "context canceled") {
+				t.Fatalf("cancellation leaked the raw Go error: %s", errOut)
+			}
+			if jsonOutput {
+				detail := errorObject(t, decodeSingleObject(t, out))
+				if detail["code"] != "interrupted" || detail["message"] != "operation interrupted" {
+					t.Fatalf("unexpected error: %v", detail)
+				}
+			}
+		})
+	}
+}
+
 func runWithAPIAndContext(ctx context.Context, t *testing.T, api play.API, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 

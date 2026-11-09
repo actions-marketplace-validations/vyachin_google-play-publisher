@@ -60,11 +60,17 @@ func newDoctorCmd(a *App, g *globalFlags) *cobra.Command {
 }
 
 func runDoctor(cmd *cobra.Command, a *App, g *globalFlags, flags *doctorFlags) error {
-	if flags.Package == "" {
-		return exitcode.Errorf(exitcode.Usage, "--package is required")
+	opts := appcore.DoctorOptions{
+		Package:      flags.Package,
+		AABPath:      flags.AAB,
+		MetadataPath: flags.Metadata,
+		Track:        flags.Track,
 	}
-	if flags.Metadata != "" && flags.AAB == "" {
-		return exitcode.Errorf(exitcode.Usage, "--metadata requires --aab for identity comparison")
+	// Fail before the client is built: bad options must return code 2 even
+	// when credentials are unavailable. Doctor validates again for direct
+	// app callers; the rules and messages live in one place.
+	if err := appcore.ValidateDoctorOptions(opts); err != nil {
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), g.Timeout)
@@ -75,12 +81,7 @@ func runDoctor(cmd *cobra.Command, a *App, g *globalFlags, flags *doctorFlags) e
 		return err
 	}
 
-	checks, checkErr := appcore.Doctor(ctx, api, appcore.DoctorOptions{
-		Package:      flags.Package,
-		AABPath:      flags.AAB,
-		MetadataPath: flags.Metadata,
-		Track:        flags.Track,
-	})
+	checks, checkErr := appcore.Doctor(ctx, api, opts)
 
 	if g.JSON {
 		if err := writeDoctorJSON(a.Stdout, flags.Package, checks, checkErr); err != nil {

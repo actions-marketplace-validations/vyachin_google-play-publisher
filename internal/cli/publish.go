@@ -113,7 +113,9 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 
 	var rollout *float64
 	if cmd.Flags().Changed("rollout") {
-		rollout = &flags.Rollout
+		// Copy the flag value: PublishOptions must not alias the flag storage.
+		fraction := flags.Rollout
+		rollout = &fraction
 	}
 
 	opts := appcore.PublishOptions{

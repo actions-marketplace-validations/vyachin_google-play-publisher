@@ -177,3 +177,26 @@ func TestMapErrorMarksAmbiguousFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestMapCommitErrorMarksCancellationAmbiguous(t *testing.T) {
+	canceled := &url.Error{Op: "Post", URL: "https://example.com", Err: context.Canceled}
+	err := mapCommitError(canceled)
+	if got := exitcode.From(err); got != exitcode.Interrupted {
+		t.Fatalf("code = %d, want %d (%v)", got, exitcode.Interrupted, err)
+	}
+	if !IsAmbiguous(err) {
+		t.Fatal("a canceled commit must be marked ambiguous")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("the original cancellation must stay unwrappable")
+	}
+	var coded *exitcode.Error
+	if !errors.As(err, &coded) || coded.Hint == "" {
+		t.Fatalf("expected a hint on %v", err)
+	}
+
+	rejected := mapCommitError(&googleapi.Error{Code: http.StatusBadRequest, Message: "invalid"})
+	if got := exitcode.From(rejected); got != exitcode.Rejected || IsAmbiguous(rejected) {
+		t.Fatalf("a definitive rejection must keep its classification: %v", rejected)
+	}
+}

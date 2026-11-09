@@ -1132,6 +1132,95 @@ func TestPublishCancelledCommitKeepsEdit(t *testing.T) {
 	}
 }
 
+func TestPublishCancelledUploadKeepsEdit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fake := &playtest.Fake{
+		UploadBundleFunc: func(context.Context, string, string, io.Reader, int64) (play.BundleInfo, error) {
+			cancel()
+			return play.BundleInfo{}, exitcode.Wrap(exitcode.Interrupted, context.Canceled)
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	_, err := publisher.Publish(ctx, baseOptions(writeAAB(t)))
+	if got := exitcode.From(err); got != exitcode.Interrupted {
+		t.Fatalf("code = %d, want %d (%v)", got, exitcode.Interrupted, err)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("a signal must not send a delete request: %v", fake.DeletedEditIDs)
+	}
+	if contains(fake.Calls, "CommitEdit") {
+		t.Fatalf("a canceled upload must not commit: %v", fake.Calls)
+	}
+}
+
+func TestPublishCancelledDryRunKeepsEdit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fake := &playtest.Fake{
+		ValidateEditFunc: func(context.Context, string, string) error {
+			cancel()
+			return nil
+		},
+	}
+	opts := baseOptions(writeAAB(t))
+	opts.DryRun = true
+
+	result, err := app.NewPublisher(fake, nil).Publish(ctx, opts)
+	if got := exitcode.From(err); got != exitcode.Interrupted {
+		t.Fatalf("code = %d, want %d (%v)", got, exitcode.Interrupted, err)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("a signal must not send a delete request: %v", fake.DeletedEditIDs)
+	}
+	if result.Review != "" {
+		t.Fatalf("a canceled dry run must not report validation: %#v", result)
+	}
+}
+
+func TestPublishSignalDuringReconciliationKeepsUnknownState(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	trackReads := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			trackReads++
+			if trackReads == 1 {
+				return nil, nil // preflight
+			}
+			// The signal arrives while the reconciliation read is running, so
+			// the reported failure is not itself a cancellation.
+			cancel()
+			return nil, exitcode.Errorf(exitcode.Transient, "service unavailable")
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			return ambiguousTimeout()
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	_, err := publisher.Publish(ctx, baseOptions(writeAAB(t)))
+	if got := exitcode.From(err); got != exitcode.Interrupted {
+		t.Fatalf("code = %d, want %d (%v)", got, exitcode.Interrupted, err)
+	}
+	if !app.IsCommitStateUnknown(err) {
+		t.Fatalf("the unknown commit state must stay recognizable: %v", err)
+	}
+	if !strings.Contains(err.Error(), "commit state is unknown") || !strings.Contains(err.Error(), "edit-1") {
+		t.Fatalf("missing unknown-state diagnostic: %v", err)
+	}
+	if trackReads != 2 {
+		t.Fatalf("track reads = %d, want 2 (preflight and reconciliation)", trackReads)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("an interrupted reconciliation must keep the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
 // ambiguousTimeout builds the error that the Play adapter produces for a
 // transport failure whose commit may have been applied by the server.
 func ambiguousTimeout() error {

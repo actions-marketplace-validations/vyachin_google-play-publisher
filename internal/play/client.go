@@ -2,7 +2,6 @@ package play
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -278,11 +277,7 @@ func (c *Client) CommitEdit(ctx context.Context, pkg, editID string, opts Commit
 
 	if _, err := call.Do(); err != nil {
 		// Cancellation can stop the response after Play received the commit.
-		// Keep its interrupted code without claiming the edit was rejected.
-		if errors.Is(err, context.Canceled) {
-			return exitcode.Wrap(exitcode.Interrupted, &AmbiguousFailure{Err: err})
-		}
-		return mapError(err)
+		return mapCommitError(err)
 	}
 	return nil
 }

@@ -24,13 +24,23 @@ type DoctorOptions struct {
 	Track        string
 }
 
-// Doctor verifies Play access, the target track and the local AAB.
-func Doctor(ctx context.Context, api play.API, opts DoctorOptions) ([]Check, error) {
+// ValidateDoctorOptions rejects options that must fail before any API request.
+// The CLI calls it before it builds the Play client, so bad input keeps code 2
+// even when credentials are unavailable.
+func ValidateDoctorOptions(opts DoctorOptions) error {
 	if opts.Package == "" {
-		return nil, exitcode.Errorf(exitcode.Usage, "--package is required")
+		return exitcode.Errorf(exitcode.Usage, "--package is required")
 	}
 	if opts.MetadataPath != "" && opts.AABPath == "" {
-		return nil, exitcode.Errorf(exitcode.Usage, "--metadata requires --aab for identity comparison")
+		return exitcode.Errorf(exitcode.Usage, "--metadata requires --aab for identity comparison")
+	}
+	return nil
+}
+
+// Doctor verifies Play access, the target track and the local AAB.
+func Doctor(ctx context.Context, api play.API, opts DoctorOptions) ([]Check, error) {
+	if err := ValidateDoctorOptions(opts); err != nil {
+		return nil, err
 	}
 
 	track := opts.Track

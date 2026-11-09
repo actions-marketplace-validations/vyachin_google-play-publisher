@@ -121,6 +121,21 @@ func mapError(err error) error {
 	return exitcode.Wrap(exitcode.Internal, err)
 }
 
+// mapCommitError classifies an edits.commit failure. Cancellation may stop the
+// response after Play applied the edit, so it is marked ambiguous like a
+// transport failure; definitive rejections keep the regular classification.
+func mapCommitError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return exitcode.WithHint(
+			exitcode.Wrap(exitcode.Interrupted, &AmbiguousFailure{Err: err}),
+			"the commit may have been applied; check the track before retrying")
+	}
+	return mapError(err)
+}
+
 // classifyAuthError maps a failed token request from the cloud auth transport.
 // A rejected credential is an authentication problem; an endpoint outage or
 // rate limit is transient.

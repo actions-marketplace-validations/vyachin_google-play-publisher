@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	appcore "github.com/vyachin/google-play-publisher/internal/app"
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/logging"
 )
@@ -41,7 +42,10 @@ func Execute(ctx context.Context, app *App, args []string) int {
 	alreadyRendered := errors.As(err, &rendered)
 
 	code := exitcode.From(err)
-	if ctx.Err() != nil && code != exitcode.Interrupted {
+	// A signal replaces the diagnostic with a generic interruption. An
+	// unverified commit is the exception: its message names the edit that must
+	// be checked, so it is preserved even though the code is already 130.
+	if ctx.Err() != nil && !appcore.IsCommitStateUnknown(err) {
 		code = exitcode.Interrupted
 		err = exitcode.Errorf(exitcode.Interrupted, "operation interrupted")
 	}

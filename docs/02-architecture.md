@@ -225,7 +225,8 @@ locally.
 
 Cancellation on a signal: `signal.NotifyContext`, plus a separate
 `context.WithTimeout(..., 15*time.Second)` for cleanup so the process does not hang on edit
-deletion.
+deletion. After a signal no delete request is sent: the edit is left for Play to expire and
+the process exits promptly. An expired `--timeout` still runs the bounded cleanup.
 
 An ambiguous commit that reaches the operation deadline is reconciled under a separate 15 s
 recovery budget (`WithRecoveryBase` + `context.WithTimeout`). The recovery context is

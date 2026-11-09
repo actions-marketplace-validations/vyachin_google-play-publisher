@@ -113,7 +113,9 @@ Combination validation (exit code 2 on violation):
 Dry-run success is reported only after edit deletion succeeds. If validation succeeds but
 deletion fails, the command returns the cleanup error's exit code and identifies the edit
 that may still exist; it does not print a successful validation result. Cleanup failures
-after an earlier upload or validation error do not replace that original error.
+after an earlier upload or validation error do not replace that original error. A signal
+after validation keeps the edit (no delete request is sent) and returns 130; the dry run is
+not reported as successful.
 
 `--dry-run` is not "do nothing": the AAB is actually uploaded, the edit is validated and then
 deleted. It consumes traffic, creates an edit (daily quota) and the uploaded `versionCode`

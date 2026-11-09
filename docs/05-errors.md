@@ -76,7 +76,7 @@ Applies to idempotent or safely repeatable steps.
 | `tracks.releases.list` | Yes, ≤ 5 attempts | Read-only; used by preflight, `status` and commit reconciliation |
 | `edits.validate` | Yes, ≤ 5 attempts | For `--dry-run` |
 | `edits.commit` | **Careful** | No blind retry: see §4, the actual state is checked first |
-| `edits.delete` | 1 attempt, separate 15 s context | Cleanup must not mask an earlier error; successful dry-run validation requires successful deletion |
+| `edits.delete` | 1 attempt, separate 15 s context | Not attempted after a signal; must not mask an earlier error; successful dry-run validation requires successful deletion |
 
 Backoff parameters: `delay = min(cap, base * 2^retry) + rand(0..1s)`, `base=1s`, `cap=32s`,
 at most 5 attempts (Google's recommendation for 5xx). `Retry-After` is honored when present,
@@ -140,17 +140,19 @@ Cleanup follows the verified outcome:
 | `notCommitted` | The failure is definitive, or the version is absent after reconciliation | deleted best-effort |
 | `unknown` | The track could not be read after an ambiguous failure | kept |
 
-For `unknown` the tool exits with code 6 and reports the package, track, version code and edit
-ID. It does not claim that the publication failed.
+For `unknown` the tool exits with code 6 (130 when the run was interrupted) and reports the
+package, track, version code and edit ID. It does not claim that the publication failed.
 
-A signal keeps exit code 130: no further read is attempted, the edit is kept, and the process
-exits promptly. The normal pre-commit cleanup is unchanged: an edit deleted before any commit
-attempt is not affected by these rules.
+A signal keeps exit code 130: no further request is attempted — including the best-effort
+edit deletion — the edit is kept and the process exits promptly. An edit that was already
+deleted before the signal is not affected by these rules. An expired `--timeout` is not a
+signal: the bounded cleanup still runs.
 
 Cancellation returned by `edits.commit` is an ambiguous failure: the server may have received
 the request before the response was interrupted. The adapter preserves code 130 and the
 publisher reports the unknown commit state with the edit ID and a check-the-track hint.
-The CLI preserves this diagnostic instead of replacing it with a generic interruption.
+The CLI preserves this diagnostic instead of replacing it with a generic interruption; every
+other interruption keeps the generic `operation interrupted` message.
 
 If the operation deadline expired before the reconciliation read, a separate bounded recovery
 budget of 15 s is used, so a response lost at the deadline is still recognized. The budget is

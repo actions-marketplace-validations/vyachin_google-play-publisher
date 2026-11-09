@@ -61,8 +61,12 @@ func TestPublishCanceledHTTPCommit(t *testing.T) {
 					w.WriteHeader(http.StatusNotFound)
 				}
 			}))
-			t.Cleanup(server.Close)
-			t.Cleanup(func() { close(releaseCommit) })
+			// The commit handler blocks until releaseCommit is closed. Release
+			// it first, otherwise Server.Close waits for the handler forever.
+			t.Cleanup(func() {
+				close(releaseCommit)
+				server.Close()
+			})
 
 			api, err := play.New(ctx, play.Options{
 				HTTPClient: server.Client(), Endpoint: server.URL,

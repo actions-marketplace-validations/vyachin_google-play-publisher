@@ -26,7 +26,9 @@ const (
 	ReviewValidated = "validated"
 )
 
-// PublishOptions describe one publish operation.
+// PublishOptions describe one publish operation. Rollout is nil when the flag
+// was not supplied; Prepare validates the value and stores it in the plan, so
+// later changes to the pointed value cannot alter a prepared release.
 type PublishOptions struct {
 	Package                 string
 	AABPath                 string
@@ -300,11 +302,13 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 	p.logger.Debug("edit created", "editId", editID)
 
 	// Deferred cleanup is skipped after a confirmed or ambiguous commit,
-	// or after the explicit dry-run cleanup attempt.
+	// after the explicit dry-run cleanup attempt, and after a signal: a
+	// canceled run must not send another request, so the edit is left for
+	// Play to expire. An expired --timeout still runs the bounded cleanup.
 	skipCleanup := false
 	defer func() {
 		if !skipCleanup {
-			_ = p.deleteEdit(plan.Package, editID)
+			_ = p.cleanupEdit(ctx, plan.Package, editID)
 		}
 	}()
 
@@ -362,12 +366,18 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 			return PublishResult{}, err
 		}
 		skipCleanup = true // Cleanup below reports its own error; do not try twice.
-		if err := p.deleteEdit(plan.Package, editID); err != nil {
+		if err := p.cleanupEdit(ctx, plan.Package, editID); err != nil {
 			return PublishResult{}, exitcode.WithHint(
 				exitcode.Wrap(exitcode.From(err), fmt.Errorf(
 					"dry run validated but failed to delete edit %s for %s: %w", editID, plan.Package, err)),
-				"the edit may still exist; discard it before running another publication",
+				"the edit was not deleted; retry the publication later — every attempt creates a new edit",
 			)
+		}
+		if errors.Is(ctx.Err(), context.Canceled) {
+			// cleanupEdit kept the edit because a signal arrived after
+			// validation; the dry run did not finish, so do not report success.
+			return PublishResult{}, exitcode.Errorf(exitcode.Interrupted,
+				"operation interrupted: the validated edit %s was kept", editID)
 		}
 		p.logger.Info("dry run validated", "editId", editID)
 		result.Review = ReviewValidated
@@ -464,7 +474,7 @@ func (p *Publisher) commit(
 			return commitResult{
 				kind:   commitUnknown,
 				manual: manual,
-				err:    unknownCommitStateError(plan, editID, versionCode, verifyErr),
+				err:    unknownCommitStateError(ctx, plan, editID, versionCode, verifyErr),
 			}
 		}
 		if released {
@@ -559,16 +569,38 @@ func (p *Publisher) releaseState(ctx context.Context, plan release.Plan, version
 	return false, "", nil
 }
 
+// commitStateUnknown marks an error that reports an unverified commit. The CLI
+// preserves its diagnostic instead of replacing it with a generic interruption,
+// because the message names the edit and tells the operator what to check.
+type commitStateUnknown struct {
+	cause error
+}
+
+// Error implements the error interface.
+func (e *commitStateUnknown) Error() string { return e.cause.Error() }
+
+// Unwrap exposes the underlying reconciliation failure.
+func (e *commitStateUnknown) Unwrap() error { return e.cause }
+
+// IsCommitStateUnknown reports whether err describes a commit whose outcome
+// could not be verified.
+func IsCommitStateUnknown(err error) bool {
+	var unknown *commitStateUnknown
+	return errors.As(err, &unknown)
+}
+
 // unknownCommitStateError reports an unverified commit without claiming that
 // the publication failed. The edit is kept because it may already be closed.
-func unknownCommitStateError(plan release.Plan, editID string, versionCode int64, cause error) error {
+// The operation context is checked as well as the cause: a signal that arrives
+// after a reconciliation failure still has to report 130.
+func unknownCommitStateError(ctx context.Context, plan release.Plan, editID string, versionCode int64, cause error) error {
 	code := exitcode.Transient
-	if errors.Is(cause, context.Canceled) {
+	if errors.Is(cause, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 		code = exitcode.Interrupted
 	}
-	err := exitcode.Wrap(code, fmt.Errorf(
+	err := exitcode.Wrap(code, &commitStateUnknown{cause: fmt.Errorf(
 		"commit state is unknown for %s track %s version %d (edit %s): %w",
-		plan.Package, plan.Track, versionCode, editID, cause))
+		plan.Package, plan.Track, versionCode, editID, cause)})
 	return exitcode.WithHint(err,
 		"the release may be saved; check the track before retrying; the edit was kept")
 }
@@ -598,6 +630,17 @@ func (p *Publisher) alreadyReleased(
 			"versionCode %d is already on track %s", versionCode, plan.Track),
 		"bump versionCode and rebuild the AAB, or pass --if-exists=skip",
 	)
+}
+
+// cleanupEdit deletes the edit unless the run was canceled. A signal must not
+// send another request, so the edit is left for Play to expire and the process
+// exits promptly. An expired --timeout still runs the bounded cleanup.
+func (p *Publisher) cleanupEdit(ctx context.Context, pkg, editID string) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		p.logger.Debug("edit kept after cancellation", "editId", editID)
+		return nil
+	}
+	return p.deleteEdit(pkg, editID)
 }
 
 func (p *Publisher) deleteEdit(pkg, editID string) error {
