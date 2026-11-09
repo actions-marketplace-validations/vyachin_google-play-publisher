@@ -30,13 +30,13 @@ jobs:
         id: setup
         uses: ./setup
         with:
-          version: 0.0.6
+          version: 0.0.7
 
       - name: Check the installed version
         run: |
           google-play-publisher --json version > version.json
-          jq -e '.version == "0.0.6"' version.json
-          test "${{ steps.setup.outputs.version }}" = "0.0.6"
+          jq -e '.version == "0.0.7"' version.json
+          test "${{ steps.setup.outputs.version }}" = "0.0.7"
           test -n "${{ steps.setup.outputs.path }}"
 
   publish-stub:
@@ -68,7 +68,7 @@ jobs:
         env:
           GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
         with:
-          version: 0.0.6
+          version: 0.0.7
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
@@ -82,6 +82,44 @@ jobs:
           test "${{ steps.publish.outputs.skipped }}" = "false"
           test "${{ steps.publish.outputs.manual-action }}" = "false"
           test -f "${{ steps.publish.outputs.result-file }}"
+
+  publish-real-cli:
+    name: publish action parses the CLI contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build the CLI from the checkout
+        run: go build -o "$RUNNER_TEMP/google-play-publisher" ./cmd/google-play-publisher
+
+      - name: Run the publish action with a missing AAB
+        id: publish
+        continue-on-error: true
+        uses: ./
+        env:
+          GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/google-play-publisher
+        with:
+          version: 0.0.7
+          package: com.example.app
+          aab: missing.aab
+          track: internal
+
+      - name: Assert the CLI received a valid publish command
+        run: |
+          test "${{ steps.publish.outcome }}" = "failure"
+          test "${{ steps.publish.outputs.error-code }}" = "usage"
+          result="${{ steps.publish.outputs.result-file }}"
+          test -f "$result"
+          jq -e '.command == "publish"' "$result"
+          if jq -r '.error.message' "$result" | grep -q "unknown flag"; then
+            echo "the action passed a flag the CLI does not know" >&2
+            exit 1
+          fi
 
   publish-stub-manual:
     name: publish action manual-review exit code
@@ -108,7 +146,7 @@ jobs:
         env:
           GPP_TEST_ONLY_BINARY: ${{ runner.temp }}/stub/google-play-publisher
         with:
-          version: 0.0.6
+          version: 0.0.7
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal

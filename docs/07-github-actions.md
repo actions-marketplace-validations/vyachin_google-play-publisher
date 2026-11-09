@@ -1,6 +1,6 @@
 # 07 — GitHub Actions
 
-**Status:** released as v0.0.6. The examples pin that release; do not reference `@main` from a
+**Status:** released as v0.0.7. The examples pin that release; do not reference `@main` from a
 production workflow.
 
 The action revision and the CLI `version` input are separate; use the same release for both
@@ -24,9 +24,9 @@ Installs a released `google-play-publisher` archive, verifies it against `checks
 adds the binary directory to `PATH`.
 
 ```yaml
-- uses: vyachin/google-play-publisher/setup@v0.0.6
+- uses: vyachin/google-play-publisher/setup@v0.0.7
   with:
-    version: 0.0.6
+    version: 0.0.7
 ```
 
 Inputs:
@@ -56,9 +56,9 @@ Behavior:
 After the setup step, use the CLI directly:
 
 ```yaml
-- uses: vyachin/google-play-publisher/setup@v0.0.6
+- uses: vyachin/google-play-publisher/setup@v0.0.7
   with:
-    version: 0.0.6
+    version: 0.0.7
 
 - name: Check access
   run: |
@@ -84,9 +84,9 @@ wrapper around the CLI: input validation, Play calls, retries and exit codes sta
     umask 077
     printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
 
-- uses: vyachin/google-play-publisher@v0.0.6
+- uses: vyachin/google-play-publisher@v0.0.7
   with:
-    version: 0.0.6
+    version: 0.0.7
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
@@ -188,9 +188,9 @@ jobs:
         working-directory: android
         run: ./gradlew :app:bundleRelease --no-daemon
 
-      - uses: vyachin/google-play-publisher/setup@v0.0.6
+      - uses: vyachin/google-play-publisher/setup@v0.0.7
         with:
-          version: 0.0.6
+          version: 0.0.7
 
       - name: Write the service-account key
         env:
@@ -265,9 +265,9 @@ jobs:
 
       - name: Publish to internal
         id: play
-        uses: vyachin/google-play-publisher@v0.0.6
+        uses: vyachin/google-play-publisher@v0.0.7
         with:
-          version: 0.0.6
+          version: 0.0.7
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
@@ -375,7 +375,7 @@ production, the commit may succeed while publication waits for a manual "Publish
 
 ## Action revision and CLI version
 
-The action revision (`@v0.0.6`) and the CLI `version` input are separate coordinates.
+The action revision (`@v0.0.7`) and the CLI `version` input are separate coordinates.
 Pin the action to a release tag, optionally to a commit SHA for stricter supply-chain control,
 and pass the CLI version that the workflow should run. Both must exist as released artifacts.
 The publish action defaults `version` to the action ref only when that ref is a release tag;

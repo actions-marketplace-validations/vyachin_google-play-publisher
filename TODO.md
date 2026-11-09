@@ -1162,6 +1162,26 @@ removed.
 ADR, CHANGELOG and TODO keep only historical or removal notes. The local gate is green, and
 `versionName` stays available for release naming and traceability.
 
+### S11.9. Fix the publish action invocation and release v0.0.7 [unplanned] — done
+
+A Gunclub run with the public action exposed a release-blocking bug: `scripts/publish.sh`
+called the CLI without the `publish` subcommand, so every real publication failed with
+`unknown flag: --package`. The stub-based action tests could not see it because the stub
+accepts any arguments.
+
+- [x] Prefix the forwarded arguments with the `publish` subcommand in
+      [scripts/publish.sh](scripts/publish.sh).
+- [x] Assert the subcommand in [scripts/publish_test.sh](scripts/publish_test.sh).
+- [x] Add a CI job that runs the action with the real CLI and a missing AAB, asserts
+      `error-code=usage` and `command=publish`, and rejects an `unknown flag` message.
+- [x] Reproduce with the released v0.0.6 binary: `unknown flag: --package`; after the fix the
+      CLI reaches local AAB validation.
+- [ ] Release v0.0.7 and verify the archives and `checksums.txt`.
+- [x] Update CHANGELOG, version pins, and note that v0.0.6 is superseded.
+
+**DoD:** a real publish through the action reaches the CLI `publish` command, the regression
+tests fail without the subcommand, and v0.0.7 is released.
+
 ### S11 order and estimates
 
 | Stage | Items | Estimate | Depends on | Can run in parallel with |
