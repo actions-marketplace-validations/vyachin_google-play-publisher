@@ -11,9 +11,11 @@ import (
 
 func newVersionCmd(app *App, g *globalFlags) *cobra.Command {
 	return &cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Args:  noArgs,
+		Use:     "version",
+		Short:   "Print version information",
+		Long:    "Print gplay version, commit, build date and the Go version used to build the binary.",
+		Example: "  gplay version\n  gplay --json version",
+		Args:    noArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if g.JSON {
 				enc := json.NewEncoder(app.Stdout)

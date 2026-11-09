@@ -92,6 +92,14 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 		return PublishResult{}, err
 	}
 
+	p.logger.Info("publishing",
+		"package", plan.Package,
+		"track", plan.Track,
+		"status", plan.Status,
+		"aab", opts.AABPath,
+		"size", info.Size,
+	)
+
 	releases, err := p.api.TrackReleases(ctx, plan.Package, plan.Track)
 	if err != nil {
 		return PublishResult{}, err
@@ -104,6 +112,7 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 	if err != nil {
 		return PublishResult{}, err
 	}
+	p.logger.Debug("edit created", "editId", editID)
 
 	committed := false
 	defer func() {
@@ -122,6 +131,8 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 	if err != nil {
 		return PublishResult{}, err
 	}
+	p.logger.Info("bundle uploaded", "versionCode", bundle.VersionCode, "sha256", bundle.SHA256)
+
 	if meta != nil && bundle.VersionCode != meta.VersionCode {
 		return PublishResult{}, exitcode.Errorf(exitcode.Usage,
 			"metadata versionCode %d does not match uploaded versionCode %d",
@@ -150,6 +161,7 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 		if err := p.api.ValidateEdit(ctx, plan.Package, editID); err != nil {
 			return PublishResult{}, err
 		}
+		p.logger.Info("dry run validated", "editId", editID)
 		result.Review = ReviewValidated
 		return result, nil
 	}
@@ -164,6 +176,7 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 	if commitErr == nil {
 		committed = true
 		result.Review = review
+		p.logger.Info("published", "versionCode", bundle.VersionCode, "review", review)
 		return result, nil
 	}
 
@@ -209,6 +222,7 @@ func (p *Publisher) alreadyReleased(
 	info artifact.Info,
 ) (PublishResult, error) {
 	if opts.IfExists == release.ExistsSkip {
+		p.logger.Info("skipped: version already released", "versionCode", meta.VersionCode, "track", plan.Track)
 		return PublishResult{
 			Package:     plan.Package,
 			Track:       plan.Track,

@@ -51,8 +51,17 @@ func newPublishCmd(a *App, g *globalFlags) *cobra.Command {
 		Use:     "publish",
 		GroupID: "release",
 		Short:   "Upload an AAB and publish it to a track",
-		Long:    "Upload a signed Android App Bundle, declare the release on a track and commit the edit.",
-		Args:    noArgs,
+		Long: `Upload a signed Android App Bundle, declare the release on a track and commit
+the edit. The default track is "internal".`,
+		Example: `  # publish to the internal track
+  gplay publish -p com.example.app -f app-release.aab -t internal
+
+  # staged rollout on production
+  gplay publish -p com.example.app -f app-release.aab -t production --rollout 0.1
+
+  # validate without committing
+  gplay publish -p com.example.app -f app-release.aab --dry-run`,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runPublish(cmd, a, g, flags)
 		},
@@ -72,6 +81,7 @@ func newPublishCmd(a *App, g *globalFlags) *cobra.Command {
 	f.StringVar(&flags.IfExists, "if-exists", "fail", "behavior when versionCode is already released: fail or skip")
 	f.BoolVar(&flags.DryRun, "dry-run", false, "validate the edit and delete it without committing")
 
+	registerTrackCompletion(cmd)
 	return cmd
 }
 

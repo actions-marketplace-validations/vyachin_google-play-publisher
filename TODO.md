@@ -120,15 +120,15 @@ panic/exit в `main` только в одном месте.
 
 **DoD:** unit/CLI-часть закрыта; проверка на реальном аккаунте — после настройки доступов (S0).
 
-## S6. Полировка CLI — 0.5–1 д
+## S6. Полировка CLI — 0.5–1 д — выполнено
 
-- [ ] `gplay completion bash|zsh|fish|powershell`, `ValidArgsFunction` для `--track`.
-- [ ] `Short`/`Long`/`Example` для всех команд; группы в `gplay help`.
-- [ ] `--json` + `--debug`: `stdout` — один объект, логи — в `stderr`.
-- [ ] Критерии приёмки debug-режима из [03-cli-contract.md](docs/03-cli-contract.md#7-debug-режим).
-- [ ] Сообщения об ошибках: проблема → причина → действие.
-
-**DoD:** новая команда добавляется без правки `main`; справка читается; completion работает.
+- [x] `gplay completion bash|zsh|fish|powershell`; автодополнение флага `--track`
+      (`RegisterFlagCompletionFunc`).
+- [x] `Short`/`Long`/`Example` для всех команд; группы `Release`/`Inspect` в `gplay help`.
+- [x] `--json` + `--debug`: `stdout` — один объект, логи — в `stderr` (тест).
+- [x] Критерии приёмки debug-режима из [03-cli-contract.md](docs/03-cli-contract.md#7-debug-режим):
+      JSON-логи в stderr, отсутствие логов в stdout, секреты не печатаются.
+- [x] Сообщения об ошибках: сообщение Play + hint с действием.
 
 ## S7. Качество и CI — 1–1.5 д
 
