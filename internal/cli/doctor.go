@@ -40,8 +40,8 @@ func newDoctorCmd(a *App, g *globalFlags) *cobra.Command {
 		GroupID: "inspect",
 		Short:   "Check Play access, track and AAB before publishing",
 		Long:    "Run read-only checks: API access, target track, AAB shape, signature and AGP metadata.",
-		Example: `  gplay doctor -p com.example.app
-  gplay doctor -p com.example.app -f app-release.aab --metadata output-metadata.json`,
+		Example: `  google-play-publisher doctor -p com.example.app
+  google-play-publisher doctor -p com.example.app -f app-release.aab --metadata output-metadata.json`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDoctor(cmd, a, g, flags)

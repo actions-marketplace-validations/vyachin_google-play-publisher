@@ -39,7 +39,7 @@ func TestVersion(t *testing.T) {
 	if code != int(exitcode.OK) {
 		t.Fatalf("exit code = %d, want %d", code, exitcode.OK)
 	}
-	if !strings.Contains(out, "gplay version test") {
+	if !strings.Contains(out, "google-play-publisher version test") {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }

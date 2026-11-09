@@ -1,4 +1,4 @@
-BINARY  := gplay
+BINARY  := google-play-publisher
 MODULE  := github.com/vyachin/google-play-publisher
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -16,7 +16,7 @@ all: build
 
 build:
 	mkdir -p bin
-	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/gplay
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/google-play-publisher
 
 test:
 	go test ./...

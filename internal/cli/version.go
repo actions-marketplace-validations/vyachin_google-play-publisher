@@ -13,8 +13,8 @@ func newVersionCmd(app *App, g *globalFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:     "version",
 		Short:   "Print version information",
-		Long:    "Print gplay version, commit, build date and the Go version used to build the binary.",
-		Example: "  gplay version\n  gplay --json version",
+		Long:    "Print google-play-publisher version, commit, build date and the Go version used to build the binary.",
+		Example: "  google-play-publisher version\n  google-play-publisher --json version",
 		Args:    noArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if g.JSON {
@@ -26,7 +26,7 @@ func newVersionCmd(app *App, g *globalFlags) *cobra.Command {
 				return nil
 			}
 
-			_, _ = fmt.Fprintf(app.Stdout, "gplay version %s\n", app.Version)
+			_, _ = fmt.Fprintf(app.Stdout, "google-play-publisher version %s\n", app.Version)
 			return nil
 		},
 	}

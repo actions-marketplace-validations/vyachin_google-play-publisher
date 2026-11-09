@@ -23,8 +23,8 @@ func TestCompletionCommand(t *testing.T) {
 	if code != int(exitcode.OK) {
 		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut)
 	}
-	if !strings.Contains(out, "gplay") {
-		t.Fatalf("completion script does not mention gplay: %q", out)
+	if !strings.Contains(out, "google-play-publisher") {
+		t.Fatalf("completion script does not mention google-play-publisher: %q", out)
 	}
 }
 

@@ -1,4 +1,4 @@
-// Package version exposes build metadata for the gplay binary.
+// Package version exposes build metadata for the google-play-publisher binary.
 package version
 
 import (

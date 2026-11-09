@@ -1,15 +1,11 @@
 version: 2
 
-project_name: gplay
-
-before:
-  hooks:
-    - go test ./...
+project_name: google-play-publisher
 
 builds:
-  - id: gplay
-    main: ./cmd/gplay
-    binary: gplay
+  - id: google-play-publisher
+    main: ./cmd/google-play-publisher
+    binary: google-play-publisher
     env:
       - CGO_ENABLED=0
     goos:

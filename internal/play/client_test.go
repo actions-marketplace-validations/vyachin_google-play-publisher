@@ -58,8 +58,8 @@ func TestCreateEdit(t *testing.T) {
 	if want := "/androidpublisher/v3/applications/com.example.app/edits"; gotPath != want {
 		t.Errorf("path = %q, want %q", gotPath, want)
 	}
-	if !strings.HasPrefix(gotUserAgent, "gplay-publisher") {
-		t.Errorf("user agent = %q, want gplay-publisher prefix", gotUserAgent)
+	if !strings.HasPrefix(gotUserAgent, "google-play-publisher") {
+		t.Errorf("user agent = %q, want google-play-publisher prefix", gotUserAgent)
 	}
 }
 

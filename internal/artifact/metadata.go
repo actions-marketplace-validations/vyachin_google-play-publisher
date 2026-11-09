@@ -8,7 +8,7 @@ import (
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 )
 
-// Metadata is the subset of AGP output-metadata.json used by gplay.
+// Metadata is the subset of AGP output-metadata.json used by google-play-publisher.
 type Metadata struct {
 	ApplicationID string
 	VersionCode   int64

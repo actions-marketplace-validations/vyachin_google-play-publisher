@@ -35,7 +35,7 @@ func Execute(ctx context.Context, app *App, args []string) int {
 	}
 
 	if ctx.Err() != nil {
-		_, _ = fmt.Fprintln(app.Stderr, "gplay: interrupted")
+		_, _ = fmt.Fprintln(app.Stderr, "google-play-publisher: interrupted")
 		return int(exitcode.Interrupted)
 	}
 
@@ -49,9 +49,9 @@ func NewRootCmd(app *App) *cobra.Command {
 	g := &globalFlags{}
 
 	root := &cobra.Command{
-		Use:           "gplay",
+		Use:           "google-play-publisher",
 		Short:         "Publish Android App Bundles to Google Play",
-		Long:          "gplay publishes signed Android App Bundles (AAB) to Google Play tracks.",
+		Long:          "google-play-publisher publishes signed Android App Bundles (AAB) to Google Play tracks.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -109,13 +109,13 @@ func NewRootCmd(app *App) *cobra.Command {
 
 // printError writes the final error message once, with an optional hint.
 func printError(w io.Writer, err error, code exitcode.Code) {
-	_, _ = fmt.Fprintf(w, "gplay: %v\n", err)
+	_, _ = fmt.Fprintf(w, "google-play-publisher: %v\n", err)
 
 	var coded *exitcode.Error
 	if errors.As(err, &coded) && coded.Hint != "" {
 		_, _ = fmt.Fprintf(w, "  hint: %s\n", coded.Hint)
 	}
 	if code == exitcode.Usage {
-		_, _ = fmt.Fprintln(w, "Run 'gplay --help' for usage.")
+		_, _ = fmt.Fprintln(w, "Run 'google-play-publisher --help' for usage.")
 	}
 }

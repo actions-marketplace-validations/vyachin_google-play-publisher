@@ -23,7 +23,7 @@ import (
 const (
 	defaultChunkSize        = 8 << 20 // 8 MiB, a multiple of the required 256 KiB
 	defaultChunkRetryWindow = 30 * time.Second
-	defaultUserAgent        = "gplay-publisher"
+	defaultUserAgent        = "google-play-publisher"
 )
 
 // Options configure a Client.

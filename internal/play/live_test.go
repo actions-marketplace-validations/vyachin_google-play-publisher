@@ -10,15 +10,15 @@ import (
 )
 
 // TestLiveEditLifecycle talks to the real Play API. It is skipped unless
-// GPLAY_INTEGRATION=1 and GPLAY_PACKAGE are set.
+// GOOGLE_PLAY_PUBLISHER_INTEGRATION=1 and GOOGLE_PLAY_PUBLISHER_PACKAGE are set.
 func TestLiveEditLifecycle(t *testing.T) {
-	if os.Getenv("GPLAY_INTEGRATION") != "1" {
-		t.Skip("set GPLAY_INTEGRATION=1 to run live Play API tests")
+	if os.Getenv("GOOGLE_PLAY_PUBLISHER_INTEGRATION") != "1" {
+		t.Skip("set GOOGLE_PLAY_PUBLISHER_INTEGRATION=1 to run live Play API tests")
 	}
 
-	pkg := os.Getenv("GPLAY_PACKAGE")
+	pkg := os.Getenv("GOOGLE_PLAY_PUBLISHER_PACKAGE")
 	if pkg == "" {
-		t.Skip("set GPLAY_PACKAGE to the test application id")
+		t.Skip("set GOOGLE_PLAY_PUBLISHER_PACKAGE to the test application id")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

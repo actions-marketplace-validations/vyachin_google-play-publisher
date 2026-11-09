@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// API is the subset of the Google Play Publishing API used by gplay.
+// API is the subset of the Google Play Publishing API used by google-play-publisher.
 type API interface {
 	CreateEdit(ctx context.Context, pkg string) (editID string, err error)
 	DeleteEdit(ctx context.Context, pkg, editID string) error

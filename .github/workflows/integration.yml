@@ -24,14 +24,14 @@ jobs:
 
       - name: Write service account key
         env:
-          SA_JSON: ${{ secrets.GPLAY_SA_JSON }}
+          SA_JSON: ${{ secrets.GOOGLE_PLAY_PUBLISHER_SA_JSON }}
         run: |
           umask 077
-          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/gplay-sa.json"
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/google-play-publisher-sa.json"
 
       - name: Run live Play API tests
         env:
-          GPLAY_INTEGRATION: "1"
-          GPLAY_PACKAGE: ${{ inputs.package }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gplay-sa.json
+          GOOGLE_PLAY_PUBLISHER_INTEGRATION: "1"
+          GOOGLE_PLAY_PUBLISHER_PACKAGE: ${{ inputs.package }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/google-play-publisher-sa.json
         run: go test -v -run TestLive ./internal/play

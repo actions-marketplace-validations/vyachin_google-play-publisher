@@ -1,4 +1,4 @@
-// Command gplay publishes signed Android App Bundles to Google Play.
+// Command google-play-publisher publishes signed Android App Bundles to Google Play.
 package main
 
 import (

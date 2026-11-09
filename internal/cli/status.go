@@ -42,8 +42,8 @@ func newStatusCmd(a *App, g *globalFlags) *cobra.Command {
 		GroupID: "inspect",
 		Short:   "Show releases on a track",
 		Long:    "Show releases on a track without creating an edit. Uses the read-only releases API.",
-		Example: `  gplay status -p com.example.app
-  gplay status -p com.example.app -t production --json`,
+		Example: `  google-play-publisher status -p com.example.app
+  google-play-publisher status -p com.example.app -t production --json`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runStatus(cmd, a, g, flags)

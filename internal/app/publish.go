@@ -1,4 +1,4 @@
-// Package app implements gplay use cases on top of the Play API.
+// Package app implements google-play-publisher use cases on top of the Play API.
 package app
 
 import (

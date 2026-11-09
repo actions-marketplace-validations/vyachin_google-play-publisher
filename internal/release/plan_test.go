@@ -147,7 +147,7 @@ func TestNewPlanNotes(t *testing.T) {
 	plan, err := release.NewPlan(release.Input{
 		Package: "com.example.app",
 		Notes: map[string]string{
-			"ru-RU": "Исправления",
+			"de-DE": "Fehlerbehebungen",
 			"en-US": "Bug fixes",
 		},
 	})
@@ -158,7 +158,7 @@ func TestNewPlanNotes(t *testing.T) {
 	if len(plan.Notes) != 2 {
 		t.Fatalf("notes = %d, want 2", len(plan.Notes))
 	}
-	if plan.Notes[0].Language != "en-US" || plan.Notes[1].Language != "ru-RU" {
+	if plan.Notes[0].Language != "de-DE" || plan.Notes[1].Language != "en-US" {
 		t.Fatalf("notes are not sorted: %#v", plan.Notes)
 	}
 }
@@ -205,7 +205,7 @@ func TestNewPlanNoteLimits(t *testing.T) {
 func TestMaxNoteLengthBoundary(t *testing.T) {
 	_, err := release.NewPlan(release.Input{
 		Package: "com.example.app",
-		Notes:   map[string]string{"ru-RU": strings.Repeat("ы", release.MaxNoteLength)},
+		Notes:   map[string]string{"ru-RU": strings.Repeat("é", release.MaxNoteLength)},
 	})
 	if err != nil {
 		t.Fatalf("500 runes must be accepted: %v", err)

@@ -54,13 +54,13 @@ func newPublishCmd(a *App, g *globalFlags) *cobra.Command {
 		Long: `Upload a signed Android App Bundle, declare the release on a track and commit
 the edit. The default track is "internal".`,
 		Example: `  # publish to the internal track
-  gplay publish -p com.example.app -f app-release.aab -t internal
+  google-play-publisher publish -p com.example.app -f app-release.aab -t internal
 
   # staged rollout on production
-  gplay publish -p com.example.app -f app-release.aab -t production --rollout 0.1
+  google-play-publisher publish -p com.example.app -f app-release.aab -t production --rollout 0.1
 
   # validate without committing
-  gplay publish -p com.example.app -f app-release.aab --dry-run`,
+  google-play-publisher publish -p com.example.app -f app-release.aab --dry-run`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runPublish(cmd, a, g, flags)
