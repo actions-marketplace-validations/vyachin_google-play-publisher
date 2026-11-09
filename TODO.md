@@ -1,8 +1,9 @@
 # TODO — development plan for `google-play-publisher`
 
 **Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
-S14 (metadata pull) and S15 (single metadata flag) are done; S0 (Play Console access) was
-deferred by agreement, and the former S9 post-MVP list was dropped as out of scope. The
+S14 (metadata pull), S15 (single metadata flag) and S16 (text-only logs) are done; S0 (Play
+Console access) was deferred by agreement, and the former S9 post-MVP list was dropped as out
+of scope. The
 post-S10 review (R16–R19, I7–I9) is fixed and released, including the removal of
 `--expected-tag` in S11.8; S11.9 fixes the publish action invocation and supersedes v0.0.6.
 The Gunclub workflow switch is done in that repository, and the live publish/upload runs
@@ -42,6 +43,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S13 | Store metadata in the publish edit | 1.5–2 d | Listings, images and testers committed with the AAB |
 | S14 | `pull`: recreate the metadata tree from Play | 1–1.5 d | A pulled tree round-trips through `publish --metadata-dir` |
 | S15 | Consolidate metadata flags on `--metadata-dir` | 0.5 d | One metadata flag; `promote` applies the full tree |
+| S16 | Remove JSON log format | 0.25 d | One JSON flag: `--json` for the result only |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -1348,3 +1350,17 @@ the single input for store presence, listings, images, testers and release notes
 
 **DoD:** one CLI metadata flag; `publish` and `promote` accept a full tree or a changelog-only
 tree; the action supports the new input with a deprecated alias; the local gate is green.
+
+## S16. Remove JSON log format — 0.25 d — done [unplanned]
+
+**Goal:** remove the second JSON-related flag. `--json` describes the result on `stdout`;
+logs on `stderr` stay human-readable text.
+
+- [x] Remove `--log-format` from the global flags, `globalFlags.LogFormat` and the root
+      validation.
+- [x] Simplify `internal/logging.Options` and `logging.New` to a text handler; remove
+      `ValidFormat`.
+- [x] Remove the JSON log-format tests and update the debug-output tests.
+- [x] Documentation: CLI contract, architecture, stack, ADR-0003, README and CHANGELOG.
+
+**DoD:** one JSON flag remains (`--json`); `stderr` logs are text; the local gate is green.

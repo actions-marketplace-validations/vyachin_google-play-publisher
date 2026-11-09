@@ -2,7 +2,6 @@ package logging_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -11,7 +10,7 @@ import (
 
 func TestDebugLevel(t *testing.T) {
 	var buf bytes.Buffer
-	logger := logging.New(logging.Options{Debug: true, Format: "text", Out: &buf})
+	logger := logging.New(logging.Options{Debug: true, Out: &buf})
 
 	logger.Debug("upload started", "versionCode", 42)
 
@@ -26,7 +25,7 @@ func TestDebugLevel(t *testing.T) {
 
 func TestInfoLevelHidesDebug(t *testing.T) {
 	var buf bytes.Buffer
-	logger := logging.New(logging.Options{Format: "text", Out: &buf})
+	logger := logging.New(logging.Options{Out: &buf})
 
 	logger.Debug("hidden")
 	logger.Info("visible")
@@ -37,33 +36,5 @@ func TestInfoLevelHidesDebug(t *testing.T) {
 	}
 	if !strings.Contains(out, "visible") {
 		t.Fatalf("info line missing: %q", out)
-	}
-}
-
-func TestJSONFormat(t *testing.T) {
-	var buf bytes.Buffer
-	logger := logging.New(logging.Options{Format: "json", Out: &buf})
-
-	logger.Info("published", "track", "internal")
-
-	var got map[string]any
-	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
-		t.Fatalf("log line is not JSON: %v (%q)", err, buf.String())
-	}
-	if got["msg"] != "published" || got["track"] != "internal" {
-		t.Fatalf("unexpected log record: %#v", got)
-	}
-}
-
-func TestValidFormat(t *testing.T) {
-	for _, f := range []string{"text", "json"} {
-		if !logging.ValidFormat(f) {
-			t.Errorf("ValidFormat(%q) = false, want true", f)
-		}
-	}
-	for _, f := range []string{"", "yaml", "TEXT"} {
-		if logging.ValidFormat(f) {
-			t.Errorf("ValidFormat(%q) = true, want false", f)
-		}
 	}
 }

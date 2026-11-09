@@ -52,6 +52,8 @@
 - `--metadata` (AGP `output-metadata.json`) was removed from `publish` and `doctor`; the AAB
   manifest is the only identity source. `--package` and `--version-code` remain optional
   assertions, and `artifact.ReadMetadata` was deleted.
+- `--log-format` was removed. Logs are always text on `stderr`; `--json` affects only the
+  result on `stdout`. This leaves one JSON-related flag instead of two.
 
 ### Fixed
 

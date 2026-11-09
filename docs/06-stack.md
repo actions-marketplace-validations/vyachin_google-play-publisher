@@ -102,8 +102,8 @@ Dependencies point inward: `cli → app → play/artifact/release`; `play` knows
 ## 6. Cobra conventions
 
 - **No `init()`.** The tree is built by constructors: `NewRootCmd(app *App) *cobra.Command`.
-- **Global flags are `PersistentFlags`:** `--debug`, `--json`, `--log-format`, `--timeout`,
-  `--credentials`, `--endpoint`. Available before and after the command name.
+- **Global flags are `PersistentFlags`:** `--debug`, `--json`, `--timeout`, `--credentials`,
+  `--endpoint`. Available before and after the command name.
 - **`RunE`, not `Run`.** The error goes up; `main` prints the message once and calls
   `os.Exit`.
 - **`SilenceUsage: true`, `SilenceErrors: true`.** Runtime errors do not print usage; usage is

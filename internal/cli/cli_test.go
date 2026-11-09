@@ -96,17 +96,6 @@ func TestUnexpectedArgument(t *testing.T) {
 	}
 }
 
-func TestInvalidLogFormat(t *testing.T) {
-	_, errOut, code := run(t, "--log-format", "yaml", "version")
-
-	if code != int(exitcode.Usage) {
-		t.Fatalf("exit code = %d, want %d", code, exitcode.Usage)
-	}
-	if !strings.Contains(errOut, "invalid --log-format") {
-		t.Fatalf("unexpected stderr: %q", errOut)
-	}
-}
-
 func TestNonPositiveTimeout(t *testing.T) {
 	_, errOut, code := run(t, "--timeout", "0s", "version")
 

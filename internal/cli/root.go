@@ -19,7 +19,6 @@ import (
 type globalFlags struct {
 	Debug       bool
 	JSON        bool
-	LogFormat   string
 	Timeout     time.Duration
 	Credentials string
 	Endpoint    string
@@ -90,16 +89,12 @@ func newRootCmd(app *App) (*cobra.Command, *globalFlags) {
 			return cmd.Help()
 		},
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
-			if !logging.ValidFormat(g.LogFormat) {
-				return exitcode.Errorf(exitcode.Usage, "invalid --log-format %q: want %q or %q", g.LogFormat, "text", "json")
-			}
 			if g.Timeout <= 0 {
 				return exitcode.Errorf(exitcode.Usage, "--timeout must be positive, got %s", g.Timeout)
 			}
 			app.Logger = logging.New(logging.Options{
-				Debug:  g.Debug,
-				Format: g.LogFormat,
-				Out:    app.Stderr,
+				Debug: g.Debug,
+				Out:   app.Stderr,
 			})
 			return nil
 		},
@@ -114,7 +109,6 @@ func newRootCmd(app *App) (*cobra.Command, *globalFlags) {
 	flags := root.PersistentFlags()
 	flags.BoolVarP(&g.Debug, "debug", "d", false, "enable detailed debug logging")
 	flags.BoolVar(&g.JSON, "json", false, "print machine-readable JSON result")
-	flags.StringVar(&g.LogFormat, "log-format", "text", `log format: "text" or "json"`)
 	flags.DurationVar(&g.Timeout, "timeout", 20*time.Minute, "overall operation timeout")
 	flags.StringVar(&g.Credentials, "credentials", "", "path to service account JSON key (default: ADC)")
 	flags.StringVar(&g.Endpoint, "endpoint", "", "override API endpoint (testing)")

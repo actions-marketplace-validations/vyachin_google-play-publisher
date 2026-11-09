@@ -40,8 +40,8 @@ internal/play  — Play API adapter (the only place with androidpublisher)
 
 Rules:
 
-- global flags (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`,
-  `--endpoint`) are root `PersistentFlags`;
+- global flags (`--debug`, `--json`, `--timeout`, `--credentials`, `--endpoint`) are root
+  `PersistentFlags`;
 - `RunE` returns an error; `main` maps it once to a message and an exit code via
   `internal/exitcode`;
 - `SilenceUsage/SilenceErrors` are enabled so runtime errors do not print usage;

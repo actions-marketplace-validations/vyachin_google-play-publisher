@@ -303,8 +303,8 @@ an already running recovery and keeps exit code 130.
 - `log/slog`; `INFO` by default, `--debug` switches to `DEBUG`.
 - Everything is written to `stderr`; `stdout` carries only the result. With `--json`, `stdout`
   contains exactly one object.
-- Formats: `text` for humans, `json` for CI (`--log-format=json`); color only on a TTY and
-  without `NO_COLOR`.
+- Logs are always text on `stderr`; only the result changes format with `--json`. Color only
+  on a TTY and without `NO_COLOR`.
 - Required fields: `time`, `level`, `phase` (`preflight|insert|upload|track|commit|cleanup`),
   `package`, `track`, `version_code`, `edit_id`, `duration_ms`, `attempt`.
 - Debug adds: HTTP exchanges (method, URL, status, duration, size, attempt), request/response

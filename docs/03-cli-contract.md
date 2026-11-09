@@ -27,8 +27,7 @@ or after the command name: `google-play-publisher --debug publish ...` is equiva
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
 | `--debug`, `-d` | bool | `false` | Detailed logging to `stderr` (HTTP, retries, error bodies) |
-| `--json` | bool | `false` | Machine-readable result on `stdout` |
-| `--log-format` | enum | `text` | `text` \| `json` — log format on `stderr` |
+| `--json` | bool | `false` | Machine-readable result on `stdout`; logs remain text on `stderr` |
 | `--timeout` | duration | `20m` | Overall operation deadline |
 | `--credentials` | path | ADC | Path to the JSON key; takes precedence over ADC |
 | `--endpoint` | url | prod | For `httptest`-based tests |
@@ -94,8 +93,8 @@ manifest, resource-referenced values and a non-zero `android:versionCodeMajor` w
 code 2 before authentication. `--package` and `--version-code`, when supplied, are assertions
 against those values.
 
-The remaining flags (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`,
-`--endpoint`) are global, see §1.
+The remaining flags (`--debug`, `--json`, `--timeout`, `--credentials`, `--endpoint`) are
+global, see §1.
 
 Combination validation (exit code 2 on violation):
 
@@ -610,7 +609,6 @@ Output rules:
 
 - debug logs always go to `stderr`; `stdout` stays clean — with `--json` it contains exactly
   one object;
-- `--log-format=json` + `--debug` produce JSON lines with `DEBUG` level on `stderr`;
 - with `--debug`, HTTP exchanges are logged by a wrapper around `http.RoundTripper`: regular
   requests are buffered and restored, `bundles.upload` logs only headers,
   `Content-Range`/`Content-Length` and progress.

@@ -1,8 +1,6 @@
 package cli_test
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"strings"
@@ -12,7 +10,6 @@ import (
 
 	"github.com/vyachin/google-play-publisher/internal/cli"
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
-	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/play/playtest"
 	"github.com/vyachin/google-play-publisher/internal/version"
 )
@@ -112,34 +109,5 @@ func TestDebugLogsHaveNoSecrets(t *testing.T) {
 		if strings.Contains(errOut, secret) {
 			t.Fatalf("debug log leaks %q: %q", secret, errOut)
 		}
-	}
-}
-
-func TestDebugJSONLogFormat(t *testing.T) {
-	var out, errOut bytes.Buffer
-	app := &cli.App{
-		Stdout:  &out,
-		Stderr:  &errOut,
-		Version: version.Info{Version: "test"},
-		NewAPI: func(context.Context, play.Options) (play.API, error) {
-			return &playtest.Fake{}, nil
-		},
-	}
-
-	code := cli.Execute(context.Background(), app, []string{
-		"--debug", "--log-format", "json", "publish",
-		"-p", "com.example.app", "-f", writeAAB(t),
-	})
-	if code != int(exitcode.OK) {
-		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut.String())
-	}
-
-	line := strings.Split(strings.TrimSpace(errOut.String()), "\n")[0]
-	var record map[string]any
-	if err := json.Unmarshal([]byte(line), &record); err != nil {
-		t.Fatalf("stderr line is not JSON: %v (%q)", err, line)
-	}
-	if record["level"] != "DEBUG" && record["level"] != "INFO" {
-		t.Fatalf("unexpected log level: %#v", record)
 	}
 }
