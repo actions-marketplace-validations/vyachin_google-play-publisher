@@ -1380,14 +1380,20 @@ remove it from the user-facing CLI, where it can redirect an authenticated clien
 **DoD:** the CLI exposes only `--debug`, `--json`, `--timeout` and `--credentials` as global
 flags; `play.Options.Endpoint` still serves the adapter tests; the local gate is green.
 
-## S18. Release v0.1.0 — 0.25 d — in progress [unplanned]
+## S18. Release v0.1.0 — 0.25 d — done [unplanned]
 
 **Goal:** publish the accumulated release: `pull`, store metadata in publish and promote, and
 the consolidated CLI surface.
 
 - [x] Move the CHANGELOG `Unreleased` section to `v0.1.0` and bump action/CLI pins to `0.1.0`.
-- [ ] Tag `v0.1.0` and verify the release workflow, archives and `checksums.txt`.
-- [ ] Record release evidence.
+- [x] Tag `v0.1.0` and verify the release workflow, archives and `checksums.txt`.
+- [x] Record release evidence.
+
+**Release evidence 2026-11-09:** [release v0.1.0](https://github.com/vyachin/google-play-publisher/releases/tag/v0.1.0),
+release workflow run 42650000461. The release contains `checksums.txt`, darwin/linux
+`tar.gz` and windows `zip` archives for amd64/arm64. The `darwin_arm64` archive matches
+`checksums.txt` (SHA-256 `8e8d9413e7926f3ac67de0c5b3da4d0979c42c5e196cb9f34b95770c989481e6`);
+the extracted binary reports version `0.1.0`, commit `49fba8d` and Go `1.27.3`.
 
 **DoD:** `v0.1.0` is published with verified archives and checksums, and the documented pins
 point at that release.
