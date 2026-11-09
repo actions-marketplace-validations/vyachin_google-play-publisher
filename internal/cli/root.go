@@ -41,7 +41,7 @@ func Execute(ctx context.Context, app *App, args []string) int {
 	alreadyRendered := errors.As(err, &rendered)
 
 	code := exitcode.From(err)
-	if ctx.Err() != nil {
+	if ctx.Err() != nil && code != exitcode.Interrupted {
 		code = exitcode.Interrupted
 		err = exitcode.Errorf(exitcode.Interrupted, "operation interrupted")
 	}
@@ -55,11 +55,6 @@ func Execute(ctx context.Context, app *App, args []string) int {
 		}
 		printError(app.Stderr, err, code)
 		return int(code)
-	}
-
-	if ctx.Err() != nil {
-		_, _ = fmt.Fprintln(app.Stderr, "google-play-publisher: interrupted")
-		return int(exitcode.Interrupted)
 	}
 
 	printError(app.Stderr, err, code)

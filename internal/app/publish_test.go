@@ -1033,7 +1033,7 @@ func TestPublishCancelledCommitKeepsEdit(t *testing.T) {
 		},
 		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
 			cancel()
-			return ambiguousTimeout()
+			return exitcode.Wrap(exitcode.Interrupted, &play.AmbiguousFailure{Err: context.Canceled})
 		},
 	}
 	publisher := app.NewPublisher(fake, nil)
@@ -1042,8 +1042,8 @@ func TestPublishCancelledCommitKeepsEdit(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	if got := exitcode.From(err); got != exitcode.Transient {
-		t.Fatalf("code = %d, want %d", got, exitcode.Transient)
+	if got := exitcode.From(err); got != exitcode.Interrupted {
+		t.Fatalf("code = %d, want %d", got, exitcode.Interrupted)
 	}
 	if trackReads != 1 {
 		t.Fatalf("a canceled commit must not be reconciled, track reads = %d", trackReads)
@@ -1122,8 +1122,8 @@ func TestPublishSignalInterruptsRecovery(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an unknown-state error")
 	}
-	if got := exitcode.From(err); got != exitcode.Transient {
-		t.Fatalf("code = %d, want %d", got, exitcode.Transient)
+	if got := exitcode.From(err); got != exitcode.Interrupted {
+		t.Fatalf("code = %d, want %d", got, exitcode.Interrupted)
 	}
 	if trackReads != 3 {
 		t.Fatalf("track reads = %d, want 3 (preflight, expired read, recovery)", trackReads)

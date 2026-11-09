@@ -26,6 +26,39 @@ func runWithAPI(t *testing.T, api play.API, args ...string) (stdout, stderr stri
 	return runWithAPIAndContext(context.Background(), t, api, args...)
 }
 
+func TestPublishCanceledCommitPreservesDiagnostic(t *testing.T) {
+	for _, jsonOutput := range []bool{false, true} {
+		t.Run(strconv.FormatBool(jsonOutput), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			fake := &playtest.Fake{CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+				cancel()
+				return exitcode.Wrap(exitcode.Interrupted, &play.AmbiguousFailure{Err: context.Canceled})
+			}}
+			args := []string{"publish", "-f", writeAAB(t)}
+			if jsonOutput {
+				args = append(args, "--json")
+			}
+			out, errOut, code := runWithAPIAndContext(ctx, t, fake, args...)
+			if code != int(exitcode.Interrupted) {
+				t.Fatalf("code = %d, want 130: %s", code, errOut)
+			}
+			if !strings.Contains(errOut, "commit state is unknown") || !strings.Contains(errOut, "edit-1") || !strings.Contains(errOut, "check the track") {
+				t.Fatalf("missing recovery diagnostic: %s", errOut)
+			}
+			if jsonOutput {
+				detail := errorObject(t, decodeSingleObject(t, out))
+				if detail["code"] != "interrupted" || !strings.Contains(detail["message"].(string), "commit state is unknown") {
+					t.Fatalf("unexpected error: %v", detail)
+				}
+			}
+			if len(fake.DeletedEditIDs) != 0 {
+				t.Fatalf("commit cancellation deleted edit: %v", fake.DeletedEditIDs)
+			}
+		})
+	}
+}
+
 func runWithAPIAndContext(ctx context.Context, t *testing.T, api play.API, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 

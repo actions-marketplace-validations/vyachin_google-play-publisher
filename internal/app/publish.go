@@ -488,7 +488,7 @@ func ambiguousCommit(err error) bool {
 		return false
 	}
 	switch exitcode.From(err) {
-	case exitcode.Transient, exitcode.Internal:
+	case exitcode.Transient, exitcode.Internal, exitcode.Interrupted:
 		return true
 	default:
 		return false
@@ -557,7 +557,11 @@ func (p *Publisher) releaseState(ctx context.Context, plan release.Plan, version
 // unknownCommitStateError reports an unverified commit without claiming that
 // the publication failed. The edit is kept because it may already be closed.
 func unknownCommitStateError(plan release.Plan, editID string, versionCode int64, cause error) error {
-	err := exitcode.Wrap(exitcode.Transient, fmt.Errorf(
+	code := exitcode.Transient
+	if errors.Is(cause, context.Canceled) {
+		code = exitcode.Interrupted
+	}
+	err := exitcode.Wrap(code, fmt.Errorf(
 		"commit state is unknown for %s track %s version %d (edit %s): %w",
 		plan.Package, plan.Track, versionCode, editID, cause))
 	return exitcode.WithHint(err,

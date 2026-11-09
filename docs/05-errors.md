@@ -147,6 +147,11 @@ A signal keeps exit code 130: no further read is attempted, the edit is kept, an
 exits promptly. The normal pre-commit cleanup is unchanged: an edit deleted before any commit
 attempt is not affected by these rules.
 
+Cancellation returned by `edits.commit` is an ambiguous failure: the server may have received
+the request before the response was interrupted. The adapter preserves code 130 and the
+publisher reports the unknown commit state with the edit ID and a check-the-track hint.
+The CLI preserves this diagnostic instead of replacing it with a generic interruption.
+
 If the operation deadline expired before the reconciliation read, a separate bounded recovery
 budget of 15 s is used, so a response lost at the deadline is still recognized. The budget is
 shared by the recovery attempts. It is parented by the signal context, not by the expired
