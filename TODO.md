@@ -1,9 +1,10 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.6 released. Stages S1–S8, S8.1, S8.2, S10 and S11 are done; S0 (Play
+**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10 and S11 are done; S0 (Play
 Console access) was deferred by agreement; S9 is post-MVP. The post-S10 review (R16–R19,
-I7–I9) is fixed and released, including the removal of `--expected-tag` in S11.8. The Gunclub
-workflow switch is an external follow-up and live verification waits for S0.
+I7–I9) is fixed and released, including the removal of `--expected-tag` in S11.8; S11.9 fixes
+the publish action invocation and supersedes v0.0.6. The Gunclub workflow switch is an
+external follow-up and live verification waits for S0.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -923,8 +924,9 @@ fixes are implemented with regression tests and released as v0.0.6 (see S11).
 
 **Status 2026-11-09:** the seven review items were re-checked against the working tree
 (`f2117b4` plus the review notes) and all are confirmed. S11.0–S11.6 are implemented with
-regression tests, S11.8 removes `--expected-tag` by owner decision, and v0.0.6 is released.
-The local gate is green and the release assets and checksums are verified (see S11.7).
+regression tests, S11.8 removes `--expected-tag` by owner decision, and S11.9 fixes the
+publish action. v0.0.7 is released and supersedes v0.0.6; the local gate is green and the
+release assets and checksums are verified (see S11.7 and S11.9).
 
 **Goal:** close the post-S10 review, keep the documented CLI/exit-code contract accurate, and
 ship the fixes as v0.0.6.
@@ -1176,8 +1178,18 @@ accepts any arguments.
       `error-code=usage` and `command=publish`, and rejects an `unknown flag` message.
 - [x] Reproduce with the released v0.0.6 binary: `unknown flag: --package`; after the fix the
       CLI reaches local AAB validation.
-- [ ] Release v0.0.7 and verify the archives and `checksums.txt`.
+- [x] Release v0.0.7 and verify the archives and `checksums.txt`.
 - [x] Update CHANGELOG, version pins, and note that v0.0.6 is superseded.
+
+**Release evidence 2026-11-09:** [release v0.0.7](https://github.com/vyachin/google-play-publisher/releases/tag/v0.0.7),
+release workflow run `42621295744` (success, 2m29s). `checksums.txt` contains
+`22e9bcceb346fbeffe55220b7b0b128f05aa102b8af020e29d89d7fd6c9a90c9` for
+`google-play-publisher_0.0.7_linux_amd64.tar.gz`; the downloaded archive has the same SHA-256.
+The released `darwin_arm64` binary reports version `0.0.7`, commit `1f0af6f`, and with that
+binary the action script reaches local AAB validation instead of failing on an unknown flag.
+The push-triggered `actions` run `42621292134` first failed only because its setup smoke test
+ran before the release assets existed; the re-run passed, including the new real-CLI job. The
+v0.0.6 release notes are marked superseded.
 
 **DoD:** a real publish through the action reaches the CLI `publish` command, the regression
 tests fail without the subcommand, and v0.0.7 is released.
