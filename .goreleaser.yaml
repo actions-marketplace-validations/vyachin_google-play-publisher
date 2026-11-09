@@ -38,8 +38,8 @@ checksum:
 
 release:
   header: |
-    **Breaking:** `--release-notes` is removed. Release notes now come from
-    `--changelog-dir` (the Play/fastlane layout) and require `--version-code`.
+    **Fixed:** stricter local validation, safer debug redaction, context-aware token
+    acquisition and clearer `--json` failure diagnostics. No breaking CLI changes.
 
 changelog:
   sort: asc

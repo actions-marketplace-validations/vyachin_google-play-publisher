@@ -1,6 +1,6 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.2 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
+**Status:** v0.0.3 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
 by agreement; S9 is post-MVP.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
@@ -507,5 +507,5 @@ and update the matching behavior/error document under `docs/`.
   Add failing-writer tests for text output without rerunning a publication.
 
 **Status 2026-11-09:** R11–R15 and I5–I6 are fixed with regression tests; I3 (live
-verification) remains open until S0 access exists. The fixes are listed in the Unreleased
+verification) remains open until S0 access exists. The fixes are listed in the v0.0.3
 section of [CHANGELOG.md](CHANGELOG.md).
