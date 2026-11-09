@@ -110,7 +110,7 @@ Besides tracks, an edit accepts the store presence of the app
 | Resource | Method | Content |
 | --- | --- | --- |
 | `edits.listings` | `update`, `patch`, `get`, `list`, `delete` | `title`, `shortDescription`, `fullDescription`, `video` for one BCP-47 language |
-| `edits.images` | `upload`, `delete`, `deleteall`, `list` | `icon`, `featureGraphic`, `promoGraphic`, `tvBanner` and the screenshot types, per language |
+| `edits.images` | `upload`, `delete`, `deleteall`, `list` | `icon`, `featureGraphic`, `tvBanner` and the screenshot types, per language |
 | `edits.testers` | `update`, `patch`, `get` | `googleGroups[]` for a track |
 
 Limits that shape validation: title 30, short description 80 and full description 4000

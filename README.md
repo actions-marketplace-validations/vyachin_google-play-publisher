@@ -122,9 +122,10 @@ google-play-publisher download -p com.example.app --metadata-dir metadata
 The target must be absent or empty. `--force` replaces a non-empty tree; the download is staged
 and validated first, so a failure leaves the previous tree untouched. `--track` selects the
 track whose release notes are pulled (default `internal`). Without `--version-code`, notes from
-every release on the track are pulled; pass it to pull one specific release. Pull creates a
-read-only edit, never commits it and deletes it best-effort, so it consumes the daily edit quota
-but changes nothing in Play.
+every release on the track are pulled; pass it to pull one specific release. Tester groups are
+pulled for testing tracks only; production is skipped because Play exposes no testers there.
+Pull creates a read-only edit, never commits it and deletes it best-effort, so it consumes the
+daily edit quota but changes nothing in Play.
 
 The generated images are full-size originals (not Play's preview thumbnails), and screenshots
 are numbered in display order. A pulled tree round-trips through

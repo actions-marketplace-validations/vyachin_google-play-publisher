@@ -160,7 +160,6 @@ metadata/
     images/
       icon.png                # 512x512
       featureGraphic.png      # 1024x500
-      promoGraphic.png
       tvBanner.png
       phoneScreenshots/01.png # <= 8 MiB per file
       sevenInchScreenshots/...
@@ -255,7 +254,6 @@ metadata/
     images/
       icon.png                   # singular images keep their conventional name
       featureGraphic.png
-      promoGraphic.png
       tvBanner.png
       phoneScreenshots/001.png   # numbered in Play display order
       sevenInchScreenshots/...
@@ -275,7 +273,9 @@ Behaviour:
   downloaded at full size (`=s0`, not the preview thumbnail) and keep their conventional file
   name; screenshots are numbered `001`, `002`, … in the order Play returns them, which is the
   display order;
-- tester groups are pulled for every track that has them; a track without testers is skipped;
+- tester groups are pulled for every testing track that has them; a track without testers is
+  skipped, and production tracks are not queried because Play accepts testers only for testing
+  tracks;
 - release notes come from `--track`: without `--version-code`, notes from every release on the
   track are written for every version code of that release; with `--version-code` the selected
   release must contain that code and only `<versionCode>.txt` is written. A track without

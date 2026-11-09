@@ -10,7 +10,8 @@
   download is staged and validated with the same rules as `publish --metadata-dir`. Pull uses
   a read-only edit, never commits it and deletes it best-effort. `--track` chooses the track;
   without `--version-code` the notes of every release on it are pulled, and with it only the
-  selected version. A pulled tree round-trips through `publish --metadata-dir`.
+  selected version. Tester groups come from testing tracks only; production is skipped because
+  Play rejects `testers.get` there. A pulled tree round-trips through `publish --metadata-dir`.
 - `publish --in-app-update-priority 0..5` sets the in-app update priority of the release. Play
   does not allow changing it once the release has been rolled out.
 - `publish --country` and `--include-rest-of-world` restrict an `inProgress` production release
@@ -41,6 +42,11 @@
 - The Play image type for the app icon was spelled `appIcon`, but `edits.images` expects
   `icon`. `publish --metadata-dir` now uploads `images/icon.png` with the correct type, and
   `pull` reads the same type, so a pulled tree can be published again.
+- `promoGraphic` is not a valid `AppImageType` in the current Play API and made `images.list`
+  fail with HTTP 400. The unsupported slot was removed from the metadata tree and `pull`; use
+  `featureGraphic`, `tvBanner` or the screenshot types instead.
+- `pull` skipped `testers.get` for production tracks. Play answers 400 ("not a testing track")
+  for `production` and its form-factor variants, which aborted an otherwise successful pull.
 
 ## v0.0.7 — 2026-11-09
 

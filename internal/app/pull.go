@@ -141,6 +141,12 @@ func Pull(ctx context.Context, api play.API, opts PullOptions) (PullResult, erro
 		return PullResult{}, err
 	}
 	for _, track := range tracks {
+		// Play exposes testers only for testing tracks. production (and its
+		// form-factor variants) answers 400, so skip it instead of failing a
+		// metadata pull that otherwise succeeded.
+		if !isTestingTrack(track.Track) {
+			continue
+		}
 		testers, err := api.TesterGroups(ctx, opts.Package, editID, track.Track)
 		if err != nil {
 			if exitcode.From(err) == exitcode.NotFound {
@@ -208,6 +214,17 @@ func cleanupPullEdit(ctx context.Context, api play.API, pkg, editID string) {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = api.DeleteEdit(cleanupCtx, pkg, editID)
+}
+
+// isTestingTrack reports whether Play accepts testers.get for the track.
+// Production tracks have no tester configuration; form-factor tracks use the
+// same "<formFactor>:production" suffix.
+func isTestingTrack(name string) bool {
+	base := name
+	if index := strings.LastIndex(name, ":"); index >= 0 {
+		base = name[index+1:]
+	}
+	return base != "production"
 }
 
 func findTrack(tracks []play.TrackState, name string) (play.TrackState, bool) {

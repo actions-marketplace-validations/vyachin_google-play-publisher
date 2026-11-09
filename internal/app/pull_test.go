@@ -96,6 +96,7 @@ func (f *pullFixture) install(t *testing.T) {
 				}},
 			},
 			{Track: "beta"},
+			{Track: "production"},
 		}, nil
 	}
 	f.fake.TesterGroupsFunc = func(_ context.Context, _, _, track string) (play.Testers, error) {
@@ -155,6 +156,11 @@ func TestPullWritesCompleteMetadataTree(t *testing.T) {
 
 	if len(fixture.fake.DeletedEditIDs) != 1 || fixture.fake.DeletedEditIDs[0] != "edit-1" {
 		t.Fatalf("deleted edits = %v", fixture.fake.DeletedEditIDs)
+	}
+	for _, track := range fixture.fake.ReadTesterTracks {
+		if track == "production" {
+			t.Fatalf("testers were read for production: %v", fixture.fake.ReadTesterTracks)
+		}
 	}
 	for _, call := range fixture.fake.Calls {
 		if call == "CommitEdit" {

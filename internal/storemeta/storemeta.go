@@ -36,7 +36,6 @@ const MaxImageSize = 8 << 20
 const (
 	ImageAppIcon        = "icon"
 	ImageFeatureGraphic = "featureGraphic"
-	ImagePromoGraphic   = "promoGraphic"
 	ImageTVBanner       = "tvBanner"
 )
 
@@ -44,7 +43,7 @@ const (
 // then galleries. Pull and publish use the same list, so a pulled tree is
 // always a complete description of what Play exposes.
 func ImageTypes() []string {
-	types := []string{ImageAppIcon, ImageFeatureGraphic, ImagePromoGraphic, ImageTVBanner}
+	types := []string{ImageAppIcon, ImageFeatureGraphic, ImageTVBanner}
 	return append(types, screenshotDirs...)
 }
 
@@ -56,7 +55,6 @@ var listingFiles = []string{"title.txt", "short_description.txt", "full_descript
 var singleImages = map[string]string{
 	"icon":           ImageAppIcon,
 	"featureGraphic": ImageFeatureGraphic,
-	"promoGraphic":   ImagePromoGraphic,
 	"tvBanner":       ImageTVBanner,
 }
 

@@ -1306,9 +1306,9 @@ be adopted incrementally.
       `Read`, and swaps it into place; `--force` is required for a non-empty target and the
       previous tree survives a failed download.
 - [x] `app.Pull`/`ValidatePullOptions`: local validation before the API client; all listings
-      and image types; testers for every track that has them; release notes from `--track`
-      (without `--version-code`: every release on the track, with it: only the selected
-      version), written for every version code of each selected release.
+      and supported image types; testers for testing tracks only (production answers 400);
+      release notes from `--track` (without `--version-code`: every release on the track, with
+      it: only the selected version), written for every version code of each selected release.
 - [x] CLI `pull` (alias `download`) with `--metadata-dir`, `--track`, `--version-code` and
       `--force`; JSON and text results report listings, images, changelogs and testers.
 - [x] Tests: `play` client reads and image downloads (including status mapping and no
