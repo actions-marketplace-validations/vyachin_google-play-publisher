@@ -441,7 +441,7 @@ and update the matching behavior/error document under `docs/`.
   Acceptance: secrets beginning before or at the capture limit, long values, escaped
   quotes, and partial-read payloads never expose any secret value in logs.
 
-- [ ] **R12 — P1: Preserve cancellation and deadlines during token acquisition.**
+- [x] **R12 — P1: Preserve cancellation and deadlines during token acquisition.**
   Location: [internal/play/client.go](internal/play/client.go), `New` and `tokenSource`.
   The production path wraps the context-aware cloud auth provider with
   `oauth2adapt.TokenSourceFromTokenProvider`. In the pinned adapter, `Token()` invokes

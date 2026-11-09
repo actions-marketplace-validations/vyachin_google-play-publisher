@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"testing"
 
+	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/googleapi"
 
@@ -86,6 +87,31 @@ func TestMapErrorTokenRetrieval(t *testing.T) {
 			}
 
 			err := mapError(oauthErr)
+			if got := exitcode.From(err); got != test.want {
+				t.Fatalf("code = %d, want %d (%v)", got, test.want, err)
+			}
+		})
+	}
+}
+
+func TestMapErrorAuthTokenError(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		want   exitcode.Code
+	}{
+		{"rejected credentials", http.StatusUnauthorized, exitcode.Auth},
+		{"invalid grant", http.StatusBadRequest, exitcode.Auth},
+		{"rate limited", http.StatusTooManyRequests, exitcode.Transient},
+		{"provider outage", http.StatusServiceUnavailable, exitcode.Transient},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := mapError(&auth.Error{
+				Response: &http.Response{StatusCode: test.status},
+				Body:     []byte(`{"error":"invalid_grant"}`),
+			})
 			if got := exitcode.From(err); got != test.want {
 				t.Fatalf("code = %d, want %d (%v)", got, test.want, err)
 			}

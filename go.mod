@@ -4,13 +4,13 @@ go 1.27.3
 
 require (
 	cloud.google.com/go/auth v0.24.3
-	cloud.google.com/go/auth/oauth2adapt v0.3.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/api v0.311.0
 )
 
 require (
+	cloud.google.com/go/auth/oauth2adapt v0.3.1 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect

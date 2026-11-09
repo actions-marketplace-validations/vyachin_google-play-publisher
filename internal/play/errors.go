@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"syscall"
 
+	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2"
 	"google.golang.org/api/googleapi"
 
@@ -74,7 +76,43 @@ func mapError(err error) error {
 		return exitcode.WithHint(exitcode.Wrap(exitcode.Transient, err), hintFor(exitcode.Transient))
 	}
 
+	// Token requests made by the context-aware auth transport surface as
+	// *auth.Error when the endpoint answered; plain network errors were
+	// handled by the switch above.
+	var authErr *auth.Error
+	if errors.As(err, &authErr) {
+		return classifyAuthError(authErr)
+	}
+
 	return exitcode.Wrap(exitcode.Internal, err)
+}
+
+// classifyAuthError maps a failed token request from the cloud auth transport.
+// A rejected credential is an authentication problem; an endpoint outage or
+// rate limit is transient.
+func classifyAuthError(err *auth.Error) error {
+	status := 0
+	if err.Response != nil {
+		status = err.Response.StatusCode
+	}
+
+	code := exitcode.Transient
+	if status >= 400 && status < 500 && status != http.StatusTooManyRequests {
+		code = exitcode.Auth
+	}
+
+	detail := "auth error"
+	switch {
+	case err.Response != nil:
+		detail = err.Error()
+	case err.Err != nil:
+		detail = err.Err.Error()
+	}
+	msg := "token retrieval failed: " + detail
+	if status != 0 {
+		msg = fmt.Sprintf("%s (HTTP %d)", msg, status)
+	}
+	return exitcode.WithHint(exitcode.Wrap(code, errors.New(msg)), hintFor(code))
 }
 
 // classifyRetrieveError maps a failed token request. A rejected credential is

@@ -11,8 +11,7 @@ import (
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
-	"cloud.google.com/go/auth/oauth2adapt"
-	"golang.org/x/oauth2"
+	"cloud.google.com/go/auth/httptransport"
 	"google.golang.org/api/androidpublisher/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -71,11 +70,14 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 
 	client := opts.HTTPClient
 	if client == nil {
-		ts, err := tokenSource(opts.CredentialsFile)
+		creds, err := credentialsFor(opts.CredentialsFile)
 		if err != nil {
 			return nil, err
 		}
-		client = oauth2.NewClient(ctx, ts)
+		client, err = authenticatedClient(creds)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	clone := *client
@@ -133,7 +135,7 @@ func userAgent(ua string) string {
 	return ua
 }
 
-func tokenSource(credentialsFile string) (oauth2.TokenSource, error) {
+func credentialsFor(credentialsFile string) (*auth.Credentials, error) {
 	opts := &credentials.DetectOptions{
 		Scopes: []string{androidpublisher.AndroidpublisherScope},
 	}
@@ -153,7 +155,27 @@ func tokenSource(credentialsFile string) (oauth2.TokenSource, error) {
 			"set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON key or pass --credentials",
 		)
 	}
-	return oauth2adapt.TokenSourceFromTokenProvider(creds), nil
+	return creds, nil
+}
+
+// authenticatedClient returns a client whose token source receives the request
+// context. oauth2.NewClient cannot do that: the oauth2 TokenSource interface
+// has no context and the cloud auth adapter calls the provider with
+// context.Background(), so --timeout and cancellation would not cover token
+// acquisition or a blocking refresh.
+//
+// The auth library's own logger stays disabled: at debug level it would print
+// token request payloads (JWT assertions or client secrets), which must never
+// reach the log. The debug transport already covers the Play API exchanges.
+func authenticatedClient(creds *auth.Credentials) (*http.Client, error) {
+	client, err := httptransport.NewClient(&httptransport.Options{
+		Credentials:      creds,
+		DisableTelemetry: true,
+	})
+	if err != nil {
+		return nil, exitcode.Wrap(exitcode.Internal, err)
+	}
+	return client, nil
 }
 
 // CreateEdit creates a new edit and returns its identifier.

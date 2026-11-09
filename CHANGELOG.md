@@ -15,6 +15,9 @@
   of the failed check.
 - Debug body capture redacts secrets that cross the 4 KiB capture limit or contain escaped
   quotes, and omits a body that cannot be redacted safely; the replayed payload is unchanged.
+- Token acquisition and blocking refresh run under the operation context, so `--timeout` and
+  cancellation also stop a stalled token endpoint; token endpoint failures are mapped from
+  the cloud auth transport.
 
 ## v0.0.2 — 2026-11-09
 

@@ -184,7 +184,7 @@ with code 5.
 
 | Parameter | Default | Notes |
 | --- | --- | --- |
-| Overall deadline | 20 min | `--timeout`; covers upload and commit |
+| Overall deadline | 20 min | `--timeout`; covers token acquisition, upload and commit |
 | HTTP request timeout | 5 min | For `bundles.upload` at least 2 min (Google's recommendation) |
 | Retries | up to 5 attempts, exponential | Only 5xx/429/network; see [05](05-errors.md) |
 | Chunk retry deadline | 30 s | `ChunkRetryDeadline` |

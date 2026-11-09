@@ -30,9 +30,10 @@ Transport failures arrive as plain `net`/`url` errors, not `googleapi.Error`:
 `context.DeadlineExceeded`, `io.EOF`, `io.ErrUnexpectedEOF`, `ECONNRESET`, `ECONNREFUSED`,
 `EHOSTUNREACH`, `ENETUNREACH` and network timeouts map to exit code 6; `context.Canceled`
 maps to 130. Permanent TLS/certificate failures and malformed URLs stay internal (1) and are
-not retried. Token retrieval failures arrive as `*oauth2.RetrieveError`: a 4xx answer from
-the token endpoint is an authentication problem (3), a network failure or 5xx answer is
-transient (6).
+not retried. Token retrieval failures arrive as `*auth.Error`: a 4xx answer from the token
+endpoint is an authentication problem (3), a network failure or 5xx answer is transient (6).
+Token acquisition and blocking refreshes use the request context, so `--timeout` and
+cancellation also interrupt a stalled token endpoint.
 
 ## 2. Error catalog
 
@@ -40,8 +41,8 @@ transient (6).
 | --- | --- | --- | --- | --- | --- |
 | — | `context.DeadlineExceeded`, `io.EOF`, `ECONNRESET`, `ECONNREFUSED`, `EHOSTUNREACH`, `ENETUNREACH` | Network/timeout | 6 | Yes | Rerun |
 | — | `context.Canceled` | Interrupted by a signal | 130 | No | Rerun |
-| — | `*oauth2.RetrieveError` with 4xx | Token endpoint rejected the credentials | 3 | No | Check the key, its scopes and the account |
-| — | `*oauth2.RetrieveError` without a response, or 5xx | Token endpoint unreachable | 6 | Yes | Rerun |
+| — | `*auth.Error` with 4xx | Token endpoint rejected the credentials | 3 | No | Check the key, its scopes and the account |
+| — | `*auth.Error` without a response, or 5xx | Token endpoint unreachable | 6 | Yes | Rerun |
 | — | uploaded `sha256` differs from the inspected file | The AAB changed between inspection and upload | 1 | No | Rebuild and rerun without touching the file |
 | 500/502/503/504 | — | Play failure | 6 | Yes | Retry, then escalate |
 | 429 | `rateLimitExceeded` | Per-minute limit exceeded | 6 | Yes, with `Retry-After` | Wait |
@@ -68,7 +69,7 @@ Applies to idempotent or safely repeatable steps.
 
 | Step | Retry | Notes |
 | --- | --- | --- |
-| Token retrieval | No application retry | The auth library makes one attempt; a rejected credential is code 3, a network/5xx failure is code 6 |
+| Token retrieval | No application retry | The auth library makes one attempt under the operation context; a rejected credential is code 3, a network/5xx failure is code 6 |
 | `edits.insert` | Yes, but ≤ 2 | A repeated insert invalidates the previous edit; allowed but consumes quota |
 | `bundles.upload` | Yes, at chunk level | `ResumableMedia` + `ChunkRetryDeadline`; if the session dies, a new session in the same edit |
 | `tracks.update` | Yes, ≤ 5 attempts, 5xx/429/network | Validation errors are not retried |
