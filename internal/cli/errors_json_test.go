@@ -113,8 +113,17 @@ func TestPublishJSONManualAction(t *testing.T) {
 	if code != int(exitcode.ManualAction) {
 		t.Fatalf("code = %d, want %d", code, exitcode.ManualAction)
 	}
-	if strings.Contains(errOut, "google-play-publisher:") {
-		t.Fatalf("the manual-action result must not be reported as an error: %q", errOut)
+
+	// The saved release is a success object, but the operator still needs the
+	// Play Console action on stderr, exactly once.
+	if got := strings.Count(errOut, "Play Console"); got != 1 {
+		t.Fatalf("operator action printed %d times, want 1: %q", got, errOut)
+	}
+	if !strings.Contains(errOut, "changes saved but not submitted for review") {
+		t.Fatalf("manual-action reason missing on stderr: %q", errOut)
+	}
+	if strings.Contains(errOut, `"ok": false`) {
+		t.Fatalf("stderr contains an error object: %q", errOut)
 	}
 
 	got := decodeSingleObject(t, out)

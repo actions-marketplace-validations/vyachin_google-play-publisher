@@ -189,12 +189,14 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 }
 
 // reportManualAction prints the saved release and keeps the manual-action exit
-// code. In JSON mode the success object is the only object on stdout.
+// code. In JSON mode the success object is the only object on stdout; the
+// submission instruction still goes to stderr exactly once.
 func reportManualAction(a *App, g *globalFlags, result appcore.PublishResult, duration time.Duration, err error) error {
 	if g.JSON {
 		if writeErr := writePublishJSON(a.Stdout, result, duration); writeErr != nil {
 			return writeErr
 		}
+		printError(a.Stderr, err, exitcode.ManualAction)
 		return &renderedError{err: err}
 	}
 

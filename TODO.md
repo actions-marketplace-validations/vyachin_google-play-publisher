@@ -466,7 +466,7 @@ and update the matching behavior/error document under `docs/`.
   Acceptance: reject conflicting positive version codes with exit code 2 before
   API construction, even with `--if-exists=skip`; matching values continue to work.
 
-- [ ] **R14 — P2: Print the required operator action for JSON manual-review outcomes.**
+- [x] **R14 — P2: Print the required operator action for JSON manual-review outcomes.**
   Location: [internal/cli/publish.go](internal/cli/publish.go), `reportManualAction`;
   [internal/cli/root.go](internal/cli/root.go), JSON `renderedError` handling.
   The automatic save-without-review fallback returns exit code 8 and one success

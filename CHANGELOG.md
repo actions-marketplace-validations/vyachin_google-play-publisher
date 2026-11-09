@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `--json` for a release saved without review (exit code 8) prints the required Play Console
+  action on `stderr` while keeping exactly one success object on `stdout`.
+
 ## v0.0.2 — 2026-11-09
 
 **Breaking:** `--release-notes` is removed. Release notes now come from `--changelog-dir`
