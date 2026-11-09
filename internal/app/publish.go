@@ -301,13 +301,12 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 	}
 	p.logger.Debug("edit created", "editId", editID)
 
-	// keepEdit is false until Play confirms that the edit was saved. An
-	// unknown commit keeps the edit too: deleting it could discard a release
-	// that the server already applied.
-	keepEdit := false
+	// Deferred cleanup is skipped after a confirmed or ambiguous commit,
+	// or after the explicit dry-run cleanup attempt.
+	skipCleanup := false
 	defer func() {
-		if !keepEdit {
-			p.deleteEdit(plan.Package, editID)
+		if !skipCleanup {
+			_ = p.deleteEdit(plan.Package, editID)
 		}
 	}()
 
@@ -364,6 +363,14 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 		if err := p.api.ValidateEdit(ctx, plan.Package, editID); err != nil {
 			return PublishResult{}, err
 		}
+		skipCleanup = true // Cleanup below reports its own error; do not try twice.
+		if err := p.deleteEdit(plan.Package, editID); err != nil {
+			return PublishResult{}, exitcode.WithHint(
+				exitcode.Wrap(exitcode.From(err), fmt.Errorf(
+					"dry run validated but failed to delete edit %s for %s: %w", editID, plan.Package, err)),
+				"the edit may still exist; discard it before running another publication",
+			)
+		}
 		p.logger.Info("dry run validated", "editId", editID)
 		result.Review = ReviewValidated
 		return result, nil
@@ -372,7 +379,7 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 	outcome := p.commit(ctx, opts, plan, editID, bundle.VersionCode)
 	switch outcome.kind {
 	case commitCommitted:
-		keepEdit = true
+		skipCleanup = true
 		result.Review = outcome.review
 		if outcome.manual {
 			p.logger.Info("saved for manual review", "versionCode", bundle.VersionCode, "editId", editID)
@@ -383,7 +390,7 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 		p.logger.Info("published", "versionCode", bundle.VersionCode, "review", outcome.review)
 		return result, nil
 	case commitUnknown:
-		keepEdit = true
+		skipCleanup = true
 		p.logger.Warn("commit state is unknown", "editId", editID, "error", outcome.err)
 		return PublishResult{}, outcome.err
 	default:
@@ -595,15 +602,16 @@ func (p *Publisher) alreadyReleased(
 	)
 }
 
-func (p *Publisher) deleteEdit(pkg, editID string) {
+func (p *Publisher) deleteEdit(pkg, editID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if err := p.api.DeleteEdit(ctx, pkg, editID); err != nil {
 		p.logger.Warn("failed to delete edit", "editId", editID, "error", err)
-		return
+		return err
 	}
 	p.logger.Debug("edit deleted", "editId", editID)
+	return nil
 }
 
 func readMetadata(opts PublishOptions) (*artifact.Metadata, error) {

@@ -76,7 +76,7 @@ Applies to idempotent or safely repeatable steps.
 | `tracks.releases.list` | Yes, ≤ 5 attempts | Read-only; used by preflight, `status` and commit reconciliation |
 | `edits.validate` | Yes, ≤ 5 attempts | For `--dry-run` |
 | `edits.commit` | **Careful** | No blind retry: see §4, the actual state is checked first |
-| `edits.delete` | 1 attempt, separate 15 s context | Cleanup must not mask the original error |
+| `edits.delete` | 1 attempt, separate 15 s context | Cleanup must not mask an earlier error; successful dry-run validation requires successful deletion |
 
 Backoff parameters: `delay = min(cap, base * 2^retry) + rand(0..1s)`, `base=1s`, `cap=32s`,
 at most 5 attempts (Google's recommendation for 5xx). `Retry-After` is honored when present,

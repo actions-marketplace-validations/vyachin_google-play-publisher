@@ -217,6 +217,32 @@ func TestPublishDryRunJSON(t *testing.T) {
 	}
 }
 
+func TestPublishDryRunCleanupFailure(t *testing.T) {
+	for _, jsonOutput := range []bool{false, true} {
+		t.Run(strconv.FormatBool(jsonOutput), func(t *testing.T) {
+			fake := &playtest.Fake{DeleteEditFunc: func(context.Context, string, string) error {
+				return exitcode.Errorf(exitcode.Transient, "service unavailable")
+			}}
+			args := []string{"publish", "-f", writeAAB(t), "--dry-run"}
+			if jsonOutput {
+				args = append(args, "--json")
+			}
+			out, errOut, code := runWithAPI(t, fake, args...)
+			if code != int(exitcode.Transient) || !strings.Contains(errOut, "failed to delete edit edit-1") {
+				t.Fatalf("code = %d, stderr = %s", code, errOut)
+			}
+			if jsonOutput {
+				object := decodeSingleObject(t, out)
+				if object["ok"] != false || errorObject(t, object)["code"] != "transient" {
+					t.Fatalf("unexpected result: %v", object)
+				}
+			} else if out != "" {
+				t.Fatalf("failed cleanup printed success: %s", out)
+			}
+		})
+	}
+}
+
 func TestPublishSkipJSON(t *testing.T) {
 	fake := &playtest.Fake{
 		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {

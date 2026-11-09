@@ -110,6 +110,11 @@ Combination validation (exit code 2 on violation):
 - `--metadata` values different from the AAB values → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error.
 
+Dry-run success is reported only after edit deletion succeeds. If validation succeeds but
+deletion fails, the command returns the cleanup error's exit code and identifies the edit
+that may still exist; it does not print a successful validation result. Cleanup failures
+after an earlier upload or validation error do not replace that original error.
+
 `--dry-run` is not "do nothing": the AAB is actually uploaded, the edit is validated and then
 deleted. It consumes traffic, creates an edit (daily quota) and the uploaded `versionCode`
 may stay used even after the edit is deleted. Never dry-run the version code reserved for a

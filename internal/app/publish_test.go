@@ -277,6 +277,44 @@ func TestPublishDryRun(t *testing.T) {
 	}
 }
 
+func TestPublishDryRunCleanupFailure(t *testing.T) {
+	cleanupErr := exitcode.Errorf(exitcode.Transient, "service unavailable")
+	fake := &playtest.Fake{DeleteEditFunc: func(ctx context.Context, _, _ string) error {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("cleanup must have a bounded context")
+		}
+		return cleanupErr
+	}}
+	opts := baseOptions(writeAAB(t))
+	opts.DryRun = true
+	result, err := app.NewPublisher(fake, nil).Publish(context.Background(), opts)
+	if exitcode.From(err) != exitcode.Transient || !errors.Is(err, cleanupErr) {
+		t.Fatalf("cleanup failure was not preserved: %v", err)
+	}
+	if !strings.Contains(err.Error(), "edit-1") || result.Review != "" {
+		t.Fatalf("misleading dry-run result: %#v, %v", result, err)
+	}
+	if len(fake.DeletedEditIDs) != 1 || contains(fake.Calls, "CommitEdit") {
+		t.Fatalf("unexpected API calls: %v", fake.Calls)
+	}
+}
+
+func TestPublishCleanupDoesNotMaskValidationError(t *testing.T) {
+	validationErr := exitcode.Errorf(exitcode.Rejected, "invalid release")
+	fake := &playtest.Fake{
+		ValidateEditFunc: func(context.Context, string, string) error { return validationErr },
+		DeleteEditFunc: func(context.Context, string, string) error {
+			return exitcode.Errorf(exitcode.Transient, "cleanup failed")
+		},
+	}
+	opts := baseOptions(writeAAB(t))
+	opts.DryRun = true
+	_, err := app.NewPublisher(fake, nil).Publish(context.Background(), opts)
+	if !errors.Is(err, validationErr) || exitcode.From(err) != exitcode.Rejected {
+		t.Fatalf("cleanup masked the original failure: %v", err)
+	}
+}
+
 func TestPublishRetriesManualReview(t *testing.T) {
 	attempts := 0
 	fake := &playtest.Fake{
