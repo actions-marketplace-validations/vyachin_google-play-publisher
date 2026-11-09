@@ -131,23 +131,12 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), g.Timeout)
-	defer cancel()
-
-	api, err := newAPIClient(ctx, a, g)
-	if err != nil {
-		return err
-	}
-
-	publisher := appcore.NewPublisher(api, a.Logger)
-
 	status := flags.Status
 	if !cmd.Flags().Changed("status") {
 		status = "" // let --rollout imply inProgress
 	}
 
-	start := time.Now()
-	result, err := publisher.Publish(ctx, appcore.PublishOptions{
+	opts := appcore.PublishOptions{
 		Package:                 flags.Package,
 		AABPath:                 flags.AAB,
 		MetadataPath:            flags.Metadata,
@@ -162,7 +151,27 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		ChangesNotSentForReview: flags.ChangesNotSentForReview,
 		InReviewBehavior:        inReview,
 		DryRun:                  flags.DryRun,
-	})
+	}
+
+	// Validate every local input before the client is built: with bad input
+	// the command must fail with code 2 even when credentials are unavailable.
+	prepared, err := appcore.Prepare(opts)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(cmd.Context(), g.Timeout)
+	defer cancel()
+
+	api, err := newAPIClient(ctx, a, g)
+	if err != nil {
+		return err
+	}
+
+	publisher := appcore.NewPublisher(api, a.Logger)
+
+	start := time.Now()
+	result, err := publisher.PublishPrepared(ctx, opts, prepared)
 	if err != nil {
 		// A manual-review fallback saves the release and still needs exit
 		// code 8, so the saved result must be reported before the error.

@@ -80,23 +80,51 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // captureBody reads a JSON body, returns a redacted copy and a replacement
-// reader. Large, non-JSON and unknown-length bodies are left untouched.
+// reader. Unknown-length and non-JSON bodies are left untouched.
+//
+// The replacement always yields the same bytes and the same read error as the
+// original body, so debug mode never changes a payload. Content-Length is only
+// a hint: the amount buffered is capped by io.LimitReader.
 func captureBody(body io.ReadCloser, contentLength int64, contentType string) (string, io.ReadCloser) {
-	if body == nil || contentLength < 0 || contentLength > maxLoggedBody {
-		return "", body
-	}
-	if !strings.Contains(contentType, "json") {
+	if body == nil || contentLength < 0 || !strings.Contains(contentType, "json") {
 		return "", body
 	}
 
-	data, err := io.ReadAll(body)
+	data, err := io.ReadAll(io.LimitReader(body, maxLoggedBody+1))
 	if err != nil {
-		return "", body
+		// Replay the consumed bytes, then the original error.
+		return redact(data), &replayReadCloser{
+			reader: io.MultiReader(bytes.NewReader(data), errorReader{err}),
+			closer: body,
+		}
 	}
-	_ = body.Close()
+	if len(data) > maxLoggedBody {
+		// The body is larger than the log budget: replay the captured prefix
+		// and continue reading the rest from the original body.
+		return redact(data), &replayReadCloser{
+			reader: io.MultiReader(bytes.NewReader(data), body),
+			closer: body,
+		}
+	}
 
+	_ = body.Close()
 	return redact(data), io.NopCloser(bytes.NewReader(data))
 }
+
+// replayReadCloser replays captured bytes and closes the original body.
+type replayReadCloser struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func (r *replayReadCloser) Read(p []byte) (int, error) { return r.reader.Read(p) }
+
+func (r *replayReadCloser) Close() error { return r.closer.Close() }
+
+// errorReader reports a read error that happened while capturing the body.
+type errorReader struct{ err error }
+
+func (r errorReader) Read([]byte) (int, error) { return 0, r.err }
 
 func requestID(resp *http.Response) string {
 	for _, header := range []string{"X-Goog-Request-Id", "X-Request-Id", "X-Guploader-Uploadid"} {

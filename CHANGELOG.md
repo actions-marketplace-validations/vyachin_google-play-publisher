@@ -19,6 +19,9 @@
   code 6, rejected credentials return code 3.
 - The `sha256` returned by the upload is verified against the inspected artifact before the
   track is updated.
+- Safely repeatable API calls retry transient failures with bounded exponential backoff and
+  honor `Retry-After`; `edits.insert` is retried at most twice and `edits.commit` keeps state
+  reconciliation instead of blind retries.
 - `--package` can be resolved from `--metadata` when it is omitted.
 - `--if-exists=skip` now also works with `--version-code`, without the metadata sidecar.
 
@@ -32,6 +35,10 @@
   so a release applied by a failed retry is no longer reported as a failure.
 - `doctor --json` reports checks and the error in one object and propagates output failures.
 - `--rollout` rejects `NaN` and infinities locally instead of failing after the upload.
+- Debug logging replays HTTP bodies unchanged: partial reads keep the original bytes, the read
+  error and the close semantics, and large JSON bodies are buffered only up to the log budget.
+- Local validation (package, track, status, rollout, notes, AAB, metadata) runs before the API
+  client is created, so bad input returns code 2 even without credentials.
 
 ## v0.0.1 — 2026-11-09
 

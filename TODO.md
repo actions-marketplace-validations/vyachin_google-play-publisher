@@ -200,8 +200,8 @@ reproduced the ten findings below and were removed after review. No production c
 was changed. Real Play publication was not exercised; S0/live verification remains open.
 P1 means high priority because CI can make the wrong decision; P2 means normal priority.
 Each fix must include regression tests and update the matching document in `docs/`.
-Status 2026-11-09: R1, R2, R3, R4, R5, R6, R8, R10, I2 and I4 are fixed with regression
-tests; R7, R9, I1 and I3 remain open. The fixes are listed in the v0.0.2 section of
+Status 2026-11-09: R1–R10, I1, I2 and I4 are fixed with regression tests; I3 (live
+verification) remains open until S0 access exists. The fixes are listed in the v0.0.2 section of
 [CHANGELOG.md](CHANGELOG.md).
 
 ### Confirmed findings
@@ -278,7 +278,7 @@ tests; R7, R9, I1 and I3 remain open. The fixes are listed in the v0.0.2 section
   Acceptance: a retry applied by the server but returning an error is recognized
   by a final read; successful reconciliation never attempts edit deletion.
 
-- [ ] **R7 — P2: Keep debug body capture transparent on read errors.**
+- [x] **R7 — P2: Keep debug body capture transparent on read errors.**
   Location: [internal/play/transport.go](internal/play/transport.go), `captureBody`.
   If `io.ReadAll` consumes bytes and returns an error, the function returns the
   already-consumed original reader. A body returning JSON bytes together with
@@ -299,7 +299,7 @@ tests; R7, R9, I1 and I3 remain open. The fixes are listed in the v0.0.2 section
   Acceptance: NaN, positive/negative infinity, zero and one return usage errors
   before API construction or any mutation; valid fractions still work.
 
-- [ ] **R9 — P2: Run local publish preflight before constructing the API client.**
+- [x] **R9 — P2: Run local publish preflight before constructing the API client.**
   Location: [internal/cli/publish.go](internal/cli/publish.go), `runPublish`.
   Plan, AAB and metadata validation happen inside `Publisher.Publish`, after
   `newAPIClient`. With invalid local input and unavailable credentials, the command
@@ -321,7 +321,7 @@ tests; R7, R9, I1 and I3 remain open. The fixes are listed in the v0.0.2 section
 
 ### Additional improvements
 
-- [ ] **I1 — P2: Implement the documented bounded retry policy.**
+- [x] **I1 — P2: Implement the documented bounded retry policy.**
   The ordinary API methods in [internal/play/client.go](internal/play/client.go)
   issue one `.Do()` call; inspection of the pinned generated client shows a single
   `SendRequest` for ordinary requests. There is no application backoff or

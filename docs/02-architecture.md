@@ -109,6 +109,11 @@ sequenceDiagram
 - status and fraction are consistent: `inProgress` requires `0 < rollout < 1`, `completed`
   takes no fraction.
 
+Local validation runs before the API client is constructed: an invalid package, track,
+status, rollout, notes, AAB or metadata pair fails with code 2 without authentication and
+without a network call. Retries of the remaining safely repeatable calls are bounded (see
+[05-errors.md](05-errors.md#3-retry-policy)).
+
 Preflight is deliberately cheap and does not create an edit: the daily edit quota is spent
 only after everything else has been checked.
 

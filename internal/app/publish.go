@@ -68,12 +68,17 @@ func NewPublisher(api play.API, logger *slog.Logger) *Publisher {
 	return &Publisher{api: api, logger: logger}
 }
 
-// Publish uploads an AAB, declares the release on a track and commits the edit.
-func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishResult, error) {
-	if opts.IfExists == "" {
-		opts.IfExists = release.ExistsFail
-	}
+// Prepared holds the locally validated inputs of a publish operation.
+type Prepared struct {
+	Plan     release.Plan
+	Artifact artifact.Info
+	Metadata *artifact.Metadata
+}
 
+// Prepare validates every local input without constructing an API client, so
+// a malformed package, track, status, rollout, notes, AAB or metadata pair
+// fails before authentication or any Play call.
+func Prepare(opts PublishOptions) (Prepared, error) {
 	plan, err := release.NewPlan(release.Input{
 		Package:    opts.Package,
 		Track:      opts.Track,
@@ -83,18 +88,42 @@ func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishRe
 		Notes:      opts.Notes,
 	})
 	if err != nil {
-		return PublishResult{}, err
+		return Prepared{}, err
 	}
 
 	info, err := artifact.Inspect(opts.AABPath)
 	if err != nil {
-		return PublishResult{}, err
+		return Prepared{}, err
 	}
 
 	meta, err := readMetadata(opts)
 	if err != nil {
+		return Prepared{}, err
+	}
+
+	return Prepared{Plan: plan, Artifact: info, Metadata: meta}, nil
+}
+
+// Publish uploads an AAB, declares the release on a track and commits the edit.
+func (p *Publisher) Publish(ctx context.Context, opts PublishOptions) (PublishResult, error) {
+	prepared, err := Prepare(opts)
+	if err != nil {
 		return PublishResult{}, err
 	}
+	return p.PublishPrepared(ctx, opts, prepared)
+}
+
+// PublishPrepared runs a publish operation for inputs validated by Prepare.
+func (p *Publisher) PublishPrepared(
+	ctx context.Context,
+	opts PublishOptions,
+	prepared Prepared,
+) (PublishResult, error) {
+	if opts.IfExists == "" {
+		opts.IfExists = release.ExistsFail
+	}
+
+	plan, info, meta := prepared.Plan, prepared.Artifact, prepared.Metadata
 
 	p.logger.Info("publishing",
 		"package", plan.Package,

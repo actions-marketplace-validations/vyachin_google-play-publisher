@@ -27,6 +27,9 @@ func newClient(t *testing.T, h http.Handler) (*play.Client, *httptest.Server) {
 		HTTPClient: srv.Client(),
 		Endpoint:   srv.URL,
 		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		// Error tests assert single-call classification; retries have their
+		// own tests with an injected sleep.
+		Retry: play.RetryOptions{Attempts: 1},
 	})
 	if err != nil {
 		t.Fatalf("play.New: %v", err)

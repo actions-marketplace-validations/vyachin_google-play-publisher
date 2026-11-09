@@ -100,6 +100,9 @@ deleted. It consumes traffic, creates an edit (daily quota) and the uploaded `ve
 may stay used even after the edit is deleted. Never dry-run the version code reserved for a
 release. The output states this explicitly.
 
+Local validation (package, track, status, rollout, notes, AAB and metadata) happens before the
+API client is created, so invalid input returns code 2 even when credentials are unavailable.
+
 ### `google-play-publisher doctor` — MVP
 
 Runs read-only checks and changes nothing. Without `--aab` only access and the track are
@@ -307,11 +310,11 @@ not the call sequence, not the timeouts, not the exit code — only the amount o
 | --- | --- | --- |
 | Phases (`preflight`, `insert`, `upload`, `track`, `commit`, `cleanup`) and durations | yes | yes |
 | `package`, `track`, `versionCode`, `editId`, `sha256`, AAB size | yes | yes |
-| HTTP: method, URL, attempt, status, duration, size | no | **yes** |
+| HTTP: method, URL, status, duration, size | no | **yes** |
 | Request/response headers (except secrets) and correlation id | no | **yes** |
 | Request/response bodies (JSON, up to 4 KiB) | error message only | **yes** |
 | Resumable upload progress | every 5% | every second: bytes, percent, current chunk |
-| Retry/backoff decisions | no | **yes** |
+| Retry decisions: attempt number, delay and cause | no | **yes** |
 | Source of every parameter (flag / env / default) | no | **yes** |
 | Stack trace for `INTERNAL` | no | **yes** |
 

@@ -66,17 +66,19 @@ Applies to idempotent or safely repeatable steps.
 
 | Step | Retry | Notes |
 | --- | --- | --- |
-| Token retrieval | Yes, 2 attempts | Then code 3 |
+| Token retrieval | No application retry | The auth library makes one attempt; a rejected credential is code 3, a network/5xx failure is code 6 |
 | `edits.insert` | Yes, but ≤ 2 | A repeated insert invalidates the previous edit; allowed but consumes quota |
 | `bundles.upload` | Yes, at chunk level | `ResumableMedia` + `ChunkRetryDeadline`; if the session dies, a new session in the same edit |
-| `tracks.update` | Yes, 5xx/429 | Validation errors — no |
-| `edits.validate` | Yes | For `--dry-run` |
-| `edits.commit` | **Careful** | See §4: check the actual state first |
+| `tracks.update` | Yes, ≤ 5 attempts, 5xx/429/network | Validation errors are not retried |
+| `tracks.releases.list` | Yes, ≤ 5 attempts | Read-only; used by preflight, `status` and commit reconciliation |
+| `edits.validate` | Yes, ≤ 5 attempts | For `--dry-run` |
+| `edits.commit` | **Careful** | No blind retry: see §4, the actual state is checked first |
 | `edits.delete` | 1 attempt, separate 15 s context | Cleanup must not mask the original error |
 
-Backoff parameters: `delay = min(cap, base * 2^attempt) + rand(0..1s)`, `base=1s`, `cap=32s`,
-at most 5 attempts (Google's recommendation for 5xx). For 429, prefer `Retry-After` when
-present.
+Backoff parameters: `delay = min(cap, base * 2^retry) + rand(0..1s)`, `base=1s`, `cap=32s`,
+at most 5 attempts (Google's recommendation for 5xx). `Retry-After` is honored when present,
+as seconds or as an HTTP date, and capped at 2 minutes. Retrying stops as soon as the context
+is done; each retry is logged at `DEBUG` with the attempt number and delay.
 
 After exhaustion — code 6 and a message with the last error and the number of attempts.
 

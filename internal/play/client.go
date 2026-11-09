@@ -40,6 +40,16 @@ type Options struct {
 	Debug bool
 	// HTTPClient replaces the authenticated client. Used by tests.
 	HTTPClient *http.Client
+	// Retry tunes the bounded retry policy of safely repeatable calls.
+	Retry RetryOptions
+}
+
+// RetryOptions tune the bounded retry policy. Zero values keep the defaults:
+// 5 attempts, 1s base delay and a 32s cap.
+type RetryOptions struct {
+	Attempts int
+	Base     time.Duration
+	Cap      time.Duration
 }
 
 // Client implements API on top of the official Google API client.
@@ -48,6 +58,7 @@ type Client struct {
 	logger           *slog.Logger
 	chunkSize        int
 	chunkRetryWindow time.Duration
+	retry            retryConfig
 }
 
 // New creates a Play API client. Without Options.HTTPClient it authenticates
@@ -89,7 +100,30 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 		logger:           logger,
 		chunkSize:        defaultChunkSize,
 		chunkRetryWindow: defaultChunkRetryWindow,
+		retry:            newRetryConfig(opts.Retry),
 	}, nil
+}
+
+func newRetryConfig(opts RetryOptions) retryConfig {
+	cfg := defaultRetryConfig()
+	if opts.Attempts > 0 {
+		cfg.attempts = opts.Attempts
+	}
+	if opts.Base > 0 {
+		cfg.base = opts.Base
+	}
+	if opts.Cap > 0 {
+		cfg.cap = opts.Cap
+	}
+	return cfg
+}
+
+// attempts caps the configured attempt count for one operation.
+func (c *Client) attempts(limit int) int {
+	if limit > 0 && c.retry.attempts > limit {
+		return limit
+	}
+	return c.retry.attempts
 }
 
 func userAgent(ua string) string {
@@ -124,9 +158,18 @@ func tokenSource(credentialsFile string) (oauth2.TokenSource, error) {
 
 // CreateEdit creates a new edit and returns its identifier.
 func (c *Client) CreateEdit(ctx context.Context, pkg string) (string, error) {
-	edit, err := c.svc.Edits.Insert(pkg, &androidpublisher.AppEdit{}).Context(ctx).Do()
+	var edit *androidpublisher.AppEdit
+
+	err := c.call(ctx, "edits.insert", c.attempts(2), func(ctx context.Context) error {
+		created, err := c.svc.Edits.Insert(pkg, &androidpublisher.AppEdit{}).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		edit = created
+		return nil
+	})
 	if err != nil {
-		return "", mapError(err)
+		return "", err
 	}
 	return edit.Id, nil
 }
@@ -184,18 +227,18 @@ func (c *Client) UpdateTrack(ctx context.Context, pkg, editID, track string, rel
 		}},
 	}
 
-	if _, err := c.svc.Edits.Tracks.Update(pkg, editID, track, update).Context(ctx).Do(); err != nil {
-		return mapError(err)
-	}
-	return nil
+	return c.call(ctx, "tracks.update", c.retry.attempts, func(ctx context.Context) error {
+		_, err := c.svc.Edits.Tracks.Update(pkg, editID, track, update).Context(ctx).Do()
+		return err
+	})
 }
 
 // ValidateEdit validates an edit without committing it.
 func (c *Client) ValidateEdit(ctx context.Context, pkg, editID string) error {
-	if _, err := c.svc.Edits.Validate(pkg, editID).Context(ctx).Do(); err != nil {
-		return mapError(err)
-	}
-	return nil
+	return c.call(ctx, "edits.validate", c.retry.attempts, func(ctx context.Context) error {
+		_, err := c.svc.Edits.Validate(pkg, editID).Context(ctx).Do()
+		return err
+	})
 }
 
 // CommitEdit applies an edit.
@@ -215,9 +258,18 @@ func (c *Client) CommitEdit(ctx context.Context, pkg, editID string, opts Commit
 // TrackReleases returns release summaries for one track without creating an edit.
 func (c *Client) TrackReleases(ctx context.Context, pkg, track string) ([]ReleaseSummary, error) {
 	parent := fmt.Sprintf("applications/%s/tracks/%s", pkg, track)
-	resp, err := c.svc.Applications.Tracks.Releases.List(parent).Context(ctx).Do()
+
+	var resp *androidpublisher.ListReleaseSummariesResponse
+	err := c.call(ctx, "tracks.releases.list", c.retry.attempts, func(ctx context.Context) error {
+		listed, err := c.svc.Applications.Tracks.Releases.List(parent).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		resp = listed
+		return nil
+	})
 	if err != nil {
-		return nil, mapError(err)
+		return nil, err
 	}
 
 	summaries := make([]ReleaseSummary, 0, len(resp.Releases))
