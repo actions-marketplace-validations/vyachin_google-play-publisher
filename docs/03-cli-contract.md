@@ -9,6 +9,10 @@ document.
 - One binary: `google-play-publisher` (module `github.com/vyachin/google-play-publisher`).
 - `stdout` carries the result (data); `stderr` carries logs and diagnostics. In JSON mode
   `stdout` contains **only** a single JSON object.
+- A failure to write the human-readable result is itself an error and returns a nonzero code.
+  When the primary outcome is more specific, it keeps its code and the write failure is added
+  to the message: a release saved for manual submission stays 8, and `doctor` keeps the code
+  of the failed check.
 - Exit codes are stable, see §4. CI makes decisions on codes, not on message text.
 - Secrets never appear in output or logs.
 - Commands are idempotent in the described sense: a rerun after success is a no-op

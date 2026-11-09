@@ -184,8 +184,7 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 	if g.JSON {
 		return writePublishJSON(a.Stdout, result, time.Since(start))
 	}
-	printPublish(a.Stdout, result)
-	return nil
+	return printPublish(a.Stdout, result)
 }
 
 // reportManualAction prints the saved release and keeps the manual-action exit
@@ -200,7 +199,15 @@ func reportManualAction(a *App, g *globalFlags, result appcore.PublishResult, du
 		return &renderedError{err: err}
 	}
 
-	printPublish(a.Stdout, result)
+	if printErr := printPublish(a.Stdout, result); printErr != nil {
+		// The release is already saved, so keep the manual-action code; the
+		// operator still has to submit it even if the result was not written.
+		return exitcode.WithHint(
+			exitcode.Wrap(exitcode.ManualAction,
+				fmt.Errorf("%w; writing the result failed: %v", err, printErr)),
+			"open Play Console -> Publishing overview and send the changes for review",
+		)
+	}
 	return err
 }
 
@@ -239,19 +246,23 @@ func writePublishJSON(w io.Writer, result appcore.PublishResult, duration time.D
 	return nil
 }
 
-func printPublish(w io.Writer, result appcore.PublishResult) {
+func printPublish(w io.Writer, result appcore.PublishResult) error {
 	switch result.Review {
 	case appcore.ReviewSkipped:
-		_, _ = fmt.Fprintf(w, "skipped: version %d of %s is already on %s\n",
+		_, err := fmt.Fprintf(w, "skipped: version %d of %s is already on %s\n",
 			result.VersionCode, result.Package, result.Track)
+		return err
 	case appcore.ReviewValidated:
-		_, _ = fmt.Fprintf(w, "validated %s version %d for %s (dry run, edit %s deleted)\n",
+		_, err := fmt.Fprintf(w, "validated %s version %d for %s (dry run, edit %s deleted)\n",
 			result.Package, result.VersionCode, result.Track, result.EditID)
+		return err
 	case appcore.ReviewNotSent:
-		_, _ = fmt.Fprintf(w, "saved %s version %d to %s without sending it for review (edit %s)\n",
+		_, err := fmt.Fprintf(w, "saved %s version %d to %s without sending it for review (edit %s)\n",
 			result.Package, result.VersionCode, result.Track, result.EditID)
+		return err
 	default:
-		_, _ = fmt.Fprintf(w, "published %s version %d to %s (%s, review %s)\n",
+		_, err := fmt.Fprintf(w, "published %s version %d to %s (%s, review %s)\n",
 			result.Package, result.VersionCode, result.Track, result.Status, result.Review)
+		return err
 	}
 }

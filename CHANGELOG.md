@@ -10,6 +10,9 @@
   and retried instead of being reported as internal (1).
 - A `versionCode` conflict between `--metadata` and `--version-code` is rejected with exit
   code 2 before the API client is created, including with `--if-exists=skip`.
+- Text output failures in `publish`, `status` and `doctor` are no longer ignored: they
+  return a nonzero code, while a saved release keeps exit code 8 and `doctor` keeps the code
+  of the failed check.
 
 ## v0.0.2 — 2026-11-09
 

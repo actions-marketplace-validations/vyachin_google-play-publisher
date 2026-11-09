@@ -498,7 +498,7 @@ and update the matching behavior/error document under `docs/`.
   an opaque prepared operation carrying all validated options. Keep CLI parsing
   focused on collecting input and formatting output. Test direct app callers.
 
-- [ ] **I6 — P2: Propagate human-readable output errors.**
+- [x] **I6 — P2: Propagate human-readable output errors.**
   The earlier R10 fix propagates doctor JSON failures, but `printPublish`,
   `printStatus`, and `printChecks` still discard writer errors, including
   `tabwriter.Flush`. A closed pipe or full output device can leave exit code 0

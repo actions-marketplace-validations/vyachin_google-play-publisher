@@ -89,8 +89,16 @@ func runDoctor(cmd *cobra.Command, a *App, g *globalFlags, flags *doctorFlags) e
 		return nil
 	}
 
-	printChecks(a.Stdout, checks)
-	return checkErr
+	printErr := printChecks(a.Stdout, checks)
+	if checkErr != nil {
+		// The check failure is the actionable diagnosis; keep its exit code
+		// and mention that the report could not be written.
+		if printErr != nil {
+			return fmt.Errorf("%w (the check output could not be written: %v)", checkErr, printErr)
+		}
+		return checkErr
+	}
+	return printErr
 }
 
 func writeDoctorJSON(w io.Writer, pkg string, checks []appcore.Check, checkErr error) error {
@@ -116,12 +124,15 @@ func writeDoctorJSON(w io.Writer, pkg string, checks []appcore.Check, checkErr e
 	return nil
 }
 
-func printChecks(w io.Writer, checks []appcore.Check) {
+func printChecks(w io.Writer, checks []appcore.Check) error {
 	for _, check := range checks {
 		status := "ok  "
 		if !check.OK {
 			status = "FAIL"
 		}
-		_, _ = fmt.Fprintf(w, "%s %-10s %s\n", status, check.Name+":", check.Detail)
+		if _, err := fmt.Fprintf(w, "%s %-10s %s\n", status, check.Name+":", check.Detail); err != nil {
+			return err
+		}
 	}
+	return nil
 }

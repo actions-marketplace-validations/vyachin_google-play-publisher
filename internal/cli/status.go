@@ -79,8 +79,7 @@ func runStatus(cmd *cobra.Command, a *App, g *globalFlags, flags *statusFlags) e
 	if g.JSON {
 		return writeStatusJSON(a.Stdout, result)
 	}
-	printStatus(a.Stdout, result)
-	return nil
+	return printStatus(a.Stdout, result)
 }
 
 func writeStatusJSON(w io.Writer, result appcore.StatusResult) error {
@@ -109,14 +108,16 @@ func writeStatusJSON(w io.Writer, result appcore.StatusResult) error {
 	return nil
 }
 
-func printStatus(w io.Writer, result appcore.StatusResult) {
+func printStatus(w io.Writer, result appcore.StatusResult) error {
 	if len(result.Releases) == 0 {
-		_, _ = fmt.Fprintf(w, "no releases on %s\n", result.Track)
-		return
+		_, err := fmt.Fprintf(w, "no releases on %s\n", result.Track)
+		return err
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "NAME\tSTATE\tVERSION CODES")
+	if _, err := fmt.Fprintln(tw, "NAME\tSTATE\tVERSION CODES"); err != nil {
+		return err
+	}
 	for _, rel := range result.Releases {
 		name := rel.Name
 		if name == "" {
@@ -126,7 +127,9 @@ func printStatus(w io.Writer, result appcore.StatusResult) {
 		for _, code := range rel.VersionCodes {
 			codes = append(codes, strconv.FormatInt(code, 10))
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", name, rel.State, strings.Join(codes, ","))
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\n", name, rel.State, strings.Join(codes, ",")); err != nil {
+			return err
+		}
 	}
-	_ = tw.Flush()
+	return tw.Flush()
 }
