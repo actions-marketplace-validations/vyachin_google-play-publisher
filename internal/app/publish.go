@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -30,6 +29,7 @@ type PublishOptions struct {
 	Package                 string
 	AABPath                 string
 	MetadataPath            string
+	ChangelogDir            string
 	VersionCode             int64
 	Track                   string
 	Status                  string
@@ -52,6 +52,7 @@ type PublishResult struct {
 	SHA256      string
 	EditID      string
 	Review      string
+	VersionName string
 }
 
 // Publisher runs the publish use case.
@@ -74,9 +75,18 @@ func NewPublisher(api play.API, logger *slog.Logger) *Publisher {
 type Prepared struct {
 	opts     PublishOptions
 	plan     release.Plan
-	artifact artifact.Info
+	bundle   *artifact.Bundle
 	metadata *artifact.Metadata
 	valid    bool
+}
+
+// Close closes the opened AAB. PublishPrepared closes it after the upload;
+// callers that abandon a Prepared value must close it themselves.
+func (p Prepared) Close() error {
+	if p.bundle == nil {
+		return nil
+	}
+	return p.bundle.Close()
 }
 
 // Prepare validates every local input, including policy options and package
@@ -94,9 +104,6 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 		return Prepared{}, err
 	}
 
-	if opts.Package == "" && opts.MetadataPath == "" {
-		return Prepared{}, exitcode.Errorf(exitcode.Usage, "--package is required")
-	}
 	if opts.AABPath == "" {
 		return Prepared{}, exitcode.Errorf(exitcode.Usage, "--aab is required")
 	}
@@ -105,8 +112,55 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 	if err != nil {
 		return Prepared{}, err
 	}
+
+	bundle, err := artifact.Open(opts.AABPath)
+	if err != nil {
+		return Prepared{}, err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = bundle.Close()
+		}
+	}()
+
+	identity := bundle.Identity
 	if opts.Package == "" {
-		opts.Package = meta.ApplicationID
+		opts.Package = identity.ApplicationID
+	}
+	if opts.Package != identity.ApplicationID {
+		return Prepared{}, exitcode.Errorf(exitcode.Usage,
+			"--package %q does not match AAB applicationId %q", opts.Package, identity.ApplicationID)
+	}
+	if meta != nil {
+		if meta.ApplicationID != identity.ApplicationID {
+			return Prepared{}, exitcode.Errorf(exitcode.Usage,
+				"metadata applicationId %q does not match AAB applicationId %q",
+				meta.ApplicationID, identity.ApplicationID)
+		}
+		if meta.VersionCode != identity.VersionCode {
+			return Prepared{}, exitcode.Errorf(exitcode.Usage,
+				"metadata versionCode %d does not match AAB versionCode %d",
+				meta.VersionCode, identity.VersionCode)
+		}
+	}
+	if opts.VersionCode > 0 && opts.VersionCode != identity.VersionCode {
+		return Prepared{}, exitcode.Errorf(exitcode.Usage,
+			"--version-code %d does not match AAB versionCode %d",
+			opts.VersionCode, identity.VersionCode)
+	}
+	opts.VersionCode = identity.VersionCode
+
+	if opts.ChangelogDir != "" && len(opts.Notes) > 0 {
+		return Prepared{}, exitcode.Errorf(exitcode.Usage,
+			"release notes cannot come from both --changelog-dir and notes passed by a caller")
+	}
+	notes := opts.Notes
+	if opts.ChangelogDir != "" {
+		notes, err = readChangelogDir(opts.ChangelogDir, opts.VersionCode)
+		if err != nil {
+			return Prepared{}, err
+		}
 	}
 
 	plan, err := release.NewPlan(release.Input{
@@ -115,21 +169,17 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 		Status:     opts.Status,
 		Rollout:    opts.Rollout,
 		RolloutSet: opts.RolloutSet,
-		Notes:      opts.Notes,
+		Notes:      notes,
 	})
 	if err != nil {
 		return Prepared{}, err
 	}
 
-	info, err := artifact.Inspect(opts.AABPath)
-	if err != nil {
-		return Prepared{}, err
-	}
-
+	closed = true
 	return Prepared{
 		opts:     opts,
 		plan:     plan,
-		artifact: info,
+		bundle:   bundle,
 		metadata: meta,
 		valid:    true,
 	}, nil
@@ -177,7 +227,9 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 	}
 
 	opts := prepared.opts
-	plan, info, meta := prepared.plan, prepared.artifact, prepared.metadata
+	plan, meta := prepared.plan, prepared.metadata
+	info := prepared.bundle.Info
+	defer func() { _ = prepared.Close() }()
 
 	p.logger.Info("publishing",
 		"package", plan.Package,
@@ -192,7 +244,7 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 		return PublishResult{}, err
 	}
 	if known := knownVersionCode(opts, meta); known > 0 && versionReleased(releases, known) {
-		return p.alreadyReleased(opts, plan, known, info)
+		return p.alreadyReleased(opts, plan, known, info, prepared.bundle.Identity.VersionName)
 	}
 
 	editID, err := p.api.CreateEdit(ctx, plan.Package)
@@ -208,20 +260,18 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 		}
 	}()
 
-	file, err := os.Open(opts.AABPath)
-	if err != nil {
+	if err := prepared.bundle.Rewind(); err != nil {
 		return PublishResult{}, exitcode.Wrap(exitcode.Usage, err)
 	}
-	defer func() { _ = file.Close() }()
 
-	bundle, err := p.api.UploadBundle(ctx, plan.Package, editID, file, info.Size)
+	bundle, err := p.api.UploadBundle(ctx, plan.Package, editID, prepared.bundle.File, info.Size)
 	if err != nil {
 		return PublishResult{}, err
 	}
 	p.logger.Info("bundle uploaded", "versionCode", bundle.VersionCode, "sha256", bundle.SHA256)
 
-	// The file is reopened after inspection, so verify that Play received the
-	// bytes that were inspected. A replacement would invalidate size and hash.
+	// The upload reads from the handle that was inspected. Keep verifying the
+	// returned hash so a transport-level mismatch still stops the release.
 	if bundle.SHA256 != "" && !strings.EqualFold(bundle.SHA256, info.SHA256) {
 		return PublishResult{}, exitcode.Errorf(exitcode.Internal,
 			"uploaded bundle sha256 %s does not match the inspected artifact %s; the file changed during the run",
@@ -246,6 +296,7 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 		VersionCode: bundle.VersionCode,
 		SHA256:      uploadedSHA256(info, bundle),
 		EditID:      editID,
+		VersionName: prepared.bundle.Identity.VersionName,
 	}
 
 	if err := p.api.UpdateTrack(ctx, plan.Package, editID, plan.Track, play.Release{
@@ -339,6 +390,7 @@ func (p *Publisher) alreadyReleased(
 	plan release.Plan,
 	versionCode int64,
 	info artifact.Info,
+	versionName string,
 ) (PublishResult, error) {
 	if opts.IfExists == release.ExistsSkip {
 		p.logger.Info("skipped: version already released", "versionCode", versionCode, "track", plan.Track)
@@ -349,6 +401,7 @@ func (p *Publisher) alreadyReleased(
 			VersionCode: versionCode,
 			SHA256:      info.SHA256,
 			Review:      ReviewSkipped,
+			VersionName: versionName,
 		}, nil
 	}
 

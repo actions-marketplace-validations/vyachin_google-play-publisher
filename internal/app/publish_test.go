@@ -2,7 +2,10 @@ package app_test
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -13,13 +16,21 @@ import (
 
 	"github.com/vyachin/google-play-publisher/internal/app"
 	"github.com/vyachin/google-play-publisher/internal/artifact"
+	"github.com/vyachin/google-play-publisher/internal/artifact/artifacttest"
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/play/playtest"
 )
 
 func writeAAB(t *testing.T) string {
-	return writeBundleFiles(t, map[string]string{"BundleConfig.pb": "bundle-config"})
+	return writeAABWithIdentity(t, "com.example.app", 42, "1.0.42")
+}
+
+func writeAABWithIdentity(t *testing.T, pkg string, versionCode int64, versionName string) string {
+	return writeBundleFiles(t, map[string]string{
+		"BundleConfig.pb":                   "bundle-config",
+		"base/manifest/AndroidManifest.xml": string(artifacttest.Manifest(pkg, versionCode, versionName)),
+	})
 }
 
 func writeBundleFiles(t *testing.T, files map[string]string) string {
@@ -515,7 +526,7 @@ func TestPublishMetadataVersionMismatch(t *testing.T) {
 }
 
 func TestPrepareRejectsConflictingVersionCodes(t *testing.T) {
-	aab := writeAAB(t)
+	aab := writeAABWithIdentity(t, "com.example.app", 41, "1.0.41")
 
 	tests := []struct {
 		name        string
@@ -534,7 +545,8 @@ func TestPrepareRejectsConflictingVersionCodes(t *testing.T) {
 			opts.MetadataPath = writeMetadata(t, test.metaCode)
 			opts.VersionCode = test.versionCode
 
-			_, err := app.Prepare(opts)
+			prepared, err := app.Prepare(opts)
+			defer func() { _ = prepared.Close() }()
 			if got := exitcode.From(err); got != test.wantCode {
 				t.Fatalf("code = %d, want %d (err: %v)", got, test.wantCode, err)
 			}
@@ -561,7 +573,7 @@ func TestPrepareValidatesPolicyOptions(t *testing.T) {
 		}},
 		{"negative version code", func(o *app.PublishOptions) { o.VersionCode = -1 }},
 		{"missing aab", func(o *app.PublishOptions) { o.AABPath = "" }},
-		{"missing package", func(o *app.PublishOptions) { o.Package = "" }},
+		{"package mismatch", func(o *app.PublishOptions) { o.Package = "com.example.other" }},
 	}
 
 	for _, test := range tests {
@@ -706,4 +718,124 @@ func contains(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestPrepareResolvesPackageAndVersionFromAAB(t *testing.T) {
+	opts := baseOptions(writeAAB(t))
+	opts.Package = ""
+	opts.VersionCode = 0
+	opts.MetadataPath = ""
+
+	prepared, err := app.Prepare(opts)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	defer func() { _ = prepared.Close() }()
+
+	if prepared.Package() != "com.example.app" {
+		t.Fatalf("package = %q, want com.example.app", prepared.Package())
+	}
+}
+
+func TestPrepareRejectsAABVersionMismatch(t *testing.T) {
+	opts := baseOptions(writeAAB(t))
+	opts.VersionCode = 41
+
+	prepared, err := app.Prepare(opts)
+	defer func() { _ = prepared.Close() }()
+	if exitcode.From(err) != exitcode.Usage {
+		t.Fatalf("code = %d, want %d (err: %v)", exitcode.From(err), exitcode.Usage, err)
+	}
+	if !strings.Contains(err.Error(), "does not match AAB versionCode 42") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPrepareRejectsMetadataAABVersionMismatch(t *testing.T) {
+	opts := baseOptions(writeAAB(t))
+	opts.MetadataPath = writeMetadata(t, 41)
+
+	prepared, err := app.Prepare(opts)
+	defer func() { _ = prepared.Close() }()
+	if exitcode.From(err) != exitcode.Usage {
+		t.Fatalf("code = %d, want %d (err: %v)", exitcode.From(err), exitcode.Usage, err)
+	}
+	if !strings.Contains(err.Error(), "metadata versionCode 41 does not match AAB versionCode 42") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPublishSkipWithoutMetadata(t *testing.T) {
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	opts := baseOptions(writeAAB(t))
+	opts.IfExists = "skip"
+
+	result, err := publisher.Publish(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if result.Review != app.ReviewSkipped || result.VersionCode != 42 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if result.VersionName != "1.0.42" {
+		t.Fatalf("version name = %q, want 1.0.42", result.VersionName)
+	}
+	if contains(fake.Calls, "UploadBundle") {
+		t.Fatalf("skip must not upload: %v", fake.Calls)
+	}
+}
+
+func TestPublishUploadsTheInspectedFileHandle(t *testing.T) {
+	path := writeAAB(t)
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read original AAB: %v", err)
+	}
+
+	prepared, err := app.Prepare(baseOptions(path))
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	defer func() { _ = prepared.Close() }()
+
+	replacement := writeAABWithIdentity(t, "com.example.replacement", 43, "2.0")
+	replacementBytes, err := os.ReadFile(replacement)
+	if err != nil {
+		t.Fatalf("read replacement AAB: %v", err)
+	}
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatalf("replace AAB path: %v", err)
+	}
+
+	var uploaded []byte
+	fake := &playtest.Fake{
+		UploadBundleFunc: func(_ context.Context, _, _ string, r io.Reader, _ int64) (play.BundleInfo, error) {
+			uploaded, err = io.ReadAll(r)
+			if err != nil {
+				return play.BundleInfo{}, err
+			}
+			sum := sha256.Sum256(uploaded)
+			return play.BundleInfo{VersionCode: 42, SHA256: hex.EncodeToString(sum[:])}, nil
+		},
+	}
+
+	result, err := app.NewPublisher(fake, nil).PublishPrepared(context.Background(), prepared)
+	if err != nil {
+		t.Fatalf("PublishPrepared: %v", err)
+	}
+	if !bytes.Equal(uploaded, original) {
+		t.Fatal("upload did not use the bytes inspected by Prepare")
+	}
+	if bytes.Equal(uploaded, replacementBytes) {
+		t.Fatal("upload used the replacement file")
+	}
+	if result.VersionName != "1.0.42" {
+		t.Fatalf("version name = %q, want 1.0.42", result.VersionName)
+	}
 }

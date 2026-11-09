@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Release identity (`package`, `versionCode`, `versionName`) is read from the AAB base
+  manifest, so `--package` and `--version-code` are optional assertions instead of required
+  inputs.
+- `--changelog-dir` selects notes with the AAB version code; `--version-code` is no longer
+  required.
+- `--if-exists=skip` works without a metadata sidecar.
+- `--json` publish results include `schemaVersion` and `versionName`.
+
+### Changed
+
+- The AAB is opened once and uploaded from the inspected file handle, so replacing the path
+  during a run cannot change the uploaded bytes.
+- `--metadata` is a legacy cross-check: its `applicationId` and `versionCode` must match the
+  AAB.
+- A non-zero `android:versionCodeMajor`, resource-referenced identity values and malformed
+  manifests are rejected locally with exit code 2.
+
 ## v0.0.4 — 2026-11-09
 
 ### Fixed

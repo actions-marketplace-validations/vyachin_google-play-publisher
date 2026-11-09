@@ -77,7 +77,7 @@ sequenceDiagram
     participant AAB as internal/artifact
     participant API as Play API
 
-    CLI->>AAB: inspect file, sha256, optional output-metadata.json
+    CLI->>AAB: open once, sha256, manifest identity (package, versionCode, versionName)
     CLI->>API: applications.tracks.releases.list (preflight)
     API-->>CLI: current track releases
     CLI->>API: edits.insert(package)
@@ -99,14 +99,18 @@ sequenceDiagram
 
 - the file exists, is readable, is non-empty, is a ZIP and contains `BundleConfig.pb`
   (the marker of an AAB, not an APK);
-- when `--metadata output-metadata.json` is passed: `applicationId` matches `--package`, and
-  `versionCode` is known in advance (it is not sent to the API — Play returns it after the
-  upload; the value is used for logs and a preflight comparison). AGP does not produce this
-  file for `bundleRelease`, so AAB pipelines normally pass `--package` instead;
-- `--package` is syntactically valid (dot-separated segments);
+- the base manifest `base/manifest/AndroidManifest.xml` is a valid protobuf XML document and
+  contains `package`, a positive `android:versionCode` and an optional `android:versionName`;
+  malformed values, resource references and a non-zero `android:versionCodeMajor` are local
+  errors;
+- the package is valid (dot-separated segments) and comes from the AAB; `--package` is an
+  optional assertion;
+- when `--metadata output-metadata.json` is passed, its `applicationId` and `versionCode`
+  must equal the AAB values (legacy cross-check). AGP does not produce this file for
+  `bundleRelease`, so AAB pipelines do not need it;
 - the track exists in the track list (custom closed-track creation is outside the MVP);
-- if `versionCode` is known and already present on the target track, apply `--if-exists`
-  (`fail` by default);
+- if the AAB `versionCode` is already present on the target track, apply `--if-exists`
+  (`fail` by default); `skip` therefore works without a metadata sidecar;
 - status and fraction are consistent: `inProgress` requires `0 < rollout < 1`, `completed`
   takes no fraction.
 
@@ -116,10 +120,12 @@ without a network call. Retries of the remaining safely repeatable calls are bou
 [05-errors.md](05-errors.md#3-retry-policy)).
 
 `app.Prepare` owns all local validation, including the policy options (`--if-exists`,
-`--on-in-review`, `--dry-run` together with `--changes-not-sent-for-review`) and resolving
-`--package` from `--metadata`. It returns an opaque prepared operation, and
-`PublishPrepared` accepts only that value, so a direct app caller cannot apply options that
-were not validated. The CLI only parses flags, calls `Prepare` and formats the result.
+`--on-in-review`, `--dry-run` together with `--changes-not-sent-for-review`), resolving
+package and version code from the AAB manifest, and reading `--changelog-dir` notes after the
+version code is known. It opens the AAB once and returns an opaque prepared operation that
+owns the handle; `PublishPrepared` accepts only that value, uploads from the same handle and
+closes it on every path. A direct app caller cannot apply options that were not validated.
+The CLI only parses flags, calls `Prepare` and formats the result.
 
 Preflight is deliberately cheap and does not create an edit: the daily edit quota is spent
 only after everything else has been checked.
@@ -134,9 +140,11 @@ only after everything else has been checked.
   supported. (HTTP 400)`;
 - progress goes through `ProgressUpdater`, `INFO` every 5% (more detail in debug), so CI does
   not look stuck;
+- the upload reads from the `*os.File` opened by `Prepare`, so replacing the path during the
+  run cannot change the uploaded bytes;
 - after the response, compare the returned `sha256` with the inspected value and log
-  `versionCode`; a mismatch means the file changed during the run, so the edit is deleted
-  before `tracks.update` and the command fails.
+  `versionCode`; a mismatch means the transport or server changed the payload, so the edit is
+  deleted before `tracks.update` and the command fails.
 
 ### Track update
 
@@ -185,11 +193,11 @@ reused for a new release.
 | SIGINT/SIGTERM | Edit active | Cancel the context, best-effort `edits.delete` in a short separate context, code 130 |
 
 Republishing the same AAB after a **successful** commit is not attempted: it is a separate
-release with the same version code, which Play rejects. If `versionCode` is known from
-`--metadata` or `--version-code` the tool detects this before uploading and applies
-`--if-exists`; when both are supplied they must agree, otherwise the run stops with code 2
-before any API call. Without a known version code Play rejects the upload and the tool exits
-with code 5.
+release with the same version code, which Play rejects. The AAB version code is known before
+uploading, so the tool detects this and applies `--if-exists`; `--version-code` and
+`--metadata`, when supplied, are assertions that must agree with the AAB, otherwise the run
+stops with code 2 before any API call. Without a readable AAB manifest the run also stops
+locally.
 
 ## 7. Timeouts and cancellation
 

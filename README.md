@@ -36,12 +36,16 @@ Full setup instructions: [docs/04-play-console-setup.md](docs/04-play-console-se
 # 1. Check access and the target track
 google-play-publisher doctor -p com.example.app
 
-# 2. Publish to internal
-google-play-publisher publish -p com.example.app -f app-release.aab -t internal
+# 2. Publish to internal; package and versionCode come from the AAB
+google-play-publisher publish -f app-release.aab -t internal
 
 # 3. Show releases
 google-play-publisher status -p com.example.app -t internal
 ```
+
+The CLI reads `package`, `versionCode` and `versionName` from the AAB manifest. Passing
+`--package` or `--version-code` is optional and acts as an assertion: a value that does not
+match the AAB fails with exit code 2 before any network call.
 
 `--json` prints a machine-readable result to stdout; logs go to stderr:
 
@@ -61,24 +65,22 @@ metadata/
 ```
 
 ```bash
-google-play-publisher publish -p com.example.app -f app-release.aab \
-  --changelog-dir metadata --version-code 42 --release-name 1.0.42
+google-play-publisher publish -f app-release.aab \
+  --changelog-dir metadata --release-name 1.0.42
 ```
 
-`--version-code` is required with `--changelog-dir`: it selects the changelog files and is
-checked against the `versionCode` returned by the upload. When `--metadata` is passed too, its
-`versionCode` must match; a contradiction fails with exit code 2 before any network call. Locales without a file for that
-version code are skipped; when no file exists at all, the command fails with exit code 2 and
-the path it checked. `--release-name` is optional, but the release name is what Play Console
-shows next to the version code.
+The AAB version code selects the changelog files, so `--version-code` is no longer required;
+when supplied it is checked against the AAB and the upload. `--metadata` remains an optional
+legacy cross-check. Locales without a file for that version code are skipped; when no file
+exists at all, the command fails with exit code 2 and the path it checked. `--release-name`
+is optional; when it is empty, Play generates the name from the AAB version name.
 
 ## Useful options
 
 - `--dry-run` — upload the AAB and validate the edit without committing. The upload still
   consumes the `versionCode`, so never dry-run a release build.
 - `--debug` — detailed HTTP, phase and retry logs (secrets are redacted).
-- `--if-exists=skip` — idempotent rerun when the version code is already on the track, if the
-  version code is known from `--metadata` or `--version-code`.
+- `--if-exists=skip` — idempotent rerun when the AAB version code is already on the track.
 - `google-play-publisher completion bash|zsh|fish|powershell` — shell completion.
 
 ## Limitations
@@ -102,7 +104,7 @@ shows next to the version code.
 
 ```bash
 make build      # bin/google-play-publisher
-make test       # go test ./...
+make test       # go test ./... and the action script tests
 make lint       # golangci-lint
 make fmt        # gofumpt + go mod tidy
 make snapshot   # goreleaser snapshot

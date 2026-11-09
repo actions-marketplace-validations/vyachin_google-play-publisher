@@ -97,7 +97,7 @@ Inputs:
 | `aab` | yes | — | Path to the signed AAB |
 | `track` | no | `internal` | Release track |
 | `changelog-dir` | no | — | Play-style metadata directory with `<locale>/changelogs/<versionCode>.txt` |
-| `version-code` | no | — | Version code used for changelog lookup and upload verification; required with `changelog-dir` until the AAB-derived identity is released |
+| `version-code` | no | AAB | Optional assertion checked against the AAB and upload; used for changelog lookup |
 | `release-name` | no | — | Release name; empty lets Play generate it from the AAB version name |
 | `if-exists` | no | `fail` | `fail` or `skip` when the version code is already on the track |
 | `credentials-base64` | no | — | Base64-encoded service-account JSON |
@@ -125,6 +125,8 @@ Behavior:
 - relative input paths resolve against `GITHUB_WORKSPACE`; `defaults.run.working-directory`
   does not change action input paths;
 - inputs are passed as quoted CLI arguments, never interpolated into shell source;
+- the AAB manifest supplies `package` and `versionCode`; `package` and `version-code` remain
+  optional assertions, and `changelog-dir` uses the AAB version code;
 - base64 credentials are decoded into a `umask 077` temporary file under `$RUNNER_TEMP`,
   masked in the log, and removed after success or failure;
 - the CLI runs once with `--json`; stderr is forwarded to the job log, the JSON result is

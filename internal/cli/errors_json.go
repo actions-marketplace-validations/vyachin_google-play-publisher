@@ -23,10 +23,11 @@ type errorDetail struct {
 }
 
 type errorOutput struct {
-	OK      bool        `json:"ok"`
-	Command string      `json:"command"`
-	Package string      `json:"package,omitempty"`
-	Error   errorDetail `json:"error"`
+	SchemaVersion int         `json:"schemaVersion"`
+	OK            bool        `json:"ok"`
+	Command       string      `json:"command"`
+	Package       string      `json:"package,omitempty"`
+	Error         errorDetail `json:"error"`
 }
 
 // renderedError marks an error whose JSON result has already been written to
@@ -42,10 +43,11 @@ func (e *renderedError) Unwrap() error { return e.err }
 // writeErrorJSON renders the single JSON error object for a failed command.
 func writeErrorJSON(w io.Writer, cmd *cobra.Command, err error, code exitcode.Code) error {
 	out := errorOutput{
-		OK:      false,
-		Command: commandName(cmd),
-		Package: commandPackage(cmd),
-		Error:   newErrorDetail(err, code),
+		SchemaVersion: 1,
+		OK:            false,
+		Command:       commandName(cmd),
+		Package:       commandPackage(cmd),
+		Error:         newErrorDetail(err, code),
 	}
 
 	enc := json.NewEncoder(w)

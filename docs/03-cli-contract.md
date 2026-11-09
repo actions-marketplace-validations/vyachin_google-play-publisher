@@ -63,31 +63,38 @@ google-play-publisher publish --package com.example.app \
 
 | Flag | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--package`, `-p` | string | from `--metadata` | `applicationId`; required when there is no metadata |
+| `--package`, `-p` | string | from the AAB | `applicationId`; optional, but must match the AAB when supplied |
 | `--aab`, `-f` | path | — | Path to the signed AAB; required |
 | `--track`, `-t` | string | `internal` | Track name; the MVP uses `internal` |
 | `--status` | enum | `completed` | `completed` \| `draft` \| `inProgress` (`inProgress` requires `--rollout`) |
 | `--rollout` | float | `0` | User fraction, `0 < f < 1`; implies `inProgress` when `--status` is omitted |
-| `--changelog-dir` | path | — | Play-style metadata directory: reads `<DIR>/<locale>/changelogs/<versionCode>.txt` |
-| `--version-code` | int | — | `versionCode` used to find changelog files and to verify the upload; required with `--changelog-dir`; must match `--metadata` when both are supplied |
-| `--release-name` | string | — | Release name stored in Play; empty keeps the current behavior (no name) |
+| `--changelog-dir` | path | — | Play-style metadata directory: reads `<DIR>/<locale>/changelogs/<AAB versionCode>.txt` |
+| `--version-code` | int | from the AAB | Optional assertion checked against the AAB and the upload; selects changelogs together with `--changelog-dir` |
+| `--release-name` | string | — | Release name stored in Play; empty lets Play generate it from the AAB version name |
 | `--changes-not-sent-for-review` | bool | `false` | Save changes without submitting them for review |
 | `--on-in-review` | enum | `error` | `error` → `ERROR_IF_IN_REVIEW`; `replace` → `CANCEL_IN_REVIEW_AND_SUBMIT` |
 | `--if-exists` | enum | `fail` | `fail` \| `skip` — behavior when the version code is already on the track |
 | `--dry-run` | bool | `false` | Full run without `commit`, then delete the edit |
 | `--metadata` | path | — | AGP `output-metadata.json`: `applicationId`, `versionCode`; optional |
 
-Release notes come only from `--changelog-dir`. A locale without
-`<versionCode>.txt` is skipped, so a partial translation is allowed; when no locale has
-a file, the command fails with exit code 2 and the paths that were checked before any
-edit is created. `--version-code` without `--changelog-dir` is allowed and only verifies
-the `versionCode` returned by `bundles.upload`. When `--metadata` is also supplied, its
-`versionCode` must equal `--version-code`; a mismatch is a local input error (exit code 2)
-and is rejected before the API client is created, even with `--if-exists=skip`.
+Release notes come only from `--changelog-dir`. The version code is read from the AAB
+base manifest; a locale without `<versionCode>.txt` is skipped, so a partial translation is
+allowed. When no locale has a file, the command fails with exit code 2 and the paths that
+were checked before any edit is created. `--version-code` is an optional assertion: when
+supplied it must equal the AAB version code, and the uploaded bundle is checked against it.
+`--metadata` remains an optional legacy cross-check: its `applicationId` and `versionCode`
+must equal the AAB values; a mismatch is a local input error (exit code 2) rejected before the
+API client is created, even with `--if-exists=skip`.
 
-`--metadata` is optional. AGP does not write `build/outputs/bundle/<variant>/output-metadata.json`
-for `bundleRelease` (the file stays under `build/intermediates/bundle_ide_model/...`), so
-AAB pipelines should pass `--package` explicitly instead of relying on metadata.
+AGP does not write `build/outputs/bundle/<variant>/output-metadata.json` for
+`bundleRelease` (the file stays under `build/intermediates/bundle_ide_model/...`), so
+AAB pipelines should not rely on `--metadata`.
+
+The release identity comes from `base/manifest/AndroidManifest.xml`: `package`,
+`android:versionCode` and `android:versionName`. The tool rejects a malformed or incomplete
+manifest, resource-referenced values and a non-zero `android:versionCodeMajor` with exit
+code 2 before authentication. `--package` and `--version-code`, when supplied, are assertions
+against those values.
 
 The remaining flags (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`,
 `--endpoint`) are global, see §1.
@@ -98,8 +105,9 @@ Combination validation (exit code 2 on violation):
 - `--rollout` together with an explicit `--status=completed` or `--status=draft` → error;
 - `--status=inProgress` without `--rollout` → error;
 - `--rollout` outside `(0,1)`, including `NaN` and infinities → error;
-- `--changelog-dir` without `--version-code` → error;
-- `--metadata` version code different from `--version-code` → error;
+- `--version-code` different from the AAB version code → error;
+- `--package` different from the AAB package → error;
+- `--metadata` values different from the AAB values → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error.
 
 `--dry-run` is not "do nothing": the AAB is actually uploaded, the edit is validated and then
@@ -107,9 +115,10 @@ deleted. It consumes traffic, creates an edit (daily quota) and the uploaded `ve
 may stay used even after the edit is deleted. Never dry-run the version code reserved for a
 release. The output states this explicitly.
 
-Local validation (package, track, status, rollout, notes, AAB, metadata and policy options,
-including the metadata-resolved package) happens before the API client is created, so invalid
-input returns code 2 even when credentials are unavailable.
+Local validation (AAB and manifest identity, package, track, status, rollout, notes, metadata
+and policy options) happens before the API client is created, so invalid input returns code 2
+even when credentials are unavailable. The AAB is opened once; the inspected bytes are the
+bytes uploaded.
 
 ### `google-play-publisher doctor` — MVP
 
@@ -187,9 +196,11 @@ Success:
 
 ```json
 {
+  "schemaVersion": 1,
   "ok": true,
   "command": "publish",
   "package": "com.example.app",
+  "versionName": "1.0.42",
   "track": "internal",
   "status": "completed",
   "versionCode": 42,
@@ -205,6 +216,7 @@ Error:
 
 ```json
 {
+  "schemaVersion": 1,
   "ok": false,
   "command": "publish",
   "package": "com.example.app",
@@ -223,6 +235,8 @@ Fields:
 
 | Field | Values |
 | --- | --- |
+| `schemaVersion` | `1`; bumped on a backwards-incompatible JSON change |
+| `versionName` | AAB `android:versionName`, omitted when the manifest has none |
 | `review` | `sent` \| `notSent` \| `replaced` \| `skipped` \| `validated` |
 | `managedPublishing` | `unknown` — the API does not expose the flag; not applicable to `internal` |
 | `error.code` | stable machine-readable identifier, see the table below |
@@ -252,7 +266,8 @@ JSON schema are unchanged.
 saved but needs manual submission (exit code 8), `stdout` contains the success object with
 `"review": "notSent"`; the action for the operator is on `stderr`.
 
-The schema is versioned with `schemaVersion` on the first change; until then `1` is implied.
+Publish results carry `schemaVersion` (currently `1`) in both the success and error objects.
+Adding a field is backwards-compatible; removing or changing a field requires a version bump.
 
 ## 6. Examples
 

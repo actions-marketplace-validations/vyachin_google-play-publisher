@@ -32,6 +32,7 @@ type publishFlags struct {
 }
 
 type publishOutput struct {
+	SchemaVersion     int    `json:"schemaVersion"`
 	OK                bool   `json:"ok"`
 	Command           string `json:"command"`
 	Package           string `json:"package"`
@@ -39,6 +40,7 @@ type publishOutput struct {
 	Status            string `json:"status"`
 	VersionCode       int64  `json:"versionCode"`
 	SHA256            string `json:"sha256"`
+	VersionName       string `json:"versionName,omitempty"`
 	EditID            string `json:"editId,omitempty"`
 	Review            string `json:"review"`
 	ManagedPublishing string `json:"managedPublishing"`
@@ -53,7 +55,8 @@ func newPublishCmd(a *App, g *globalFlags) *cobra.Command {
 		GroupID: "release",
 		Short:   "Upload an AAB and publish it to a track",
 		Long: `Upload a signed Android App Bundle, declare the release on a track and commit
-the edit. The default track is "internal".`,
+the edit. The package and version code are read from the AAB manifest; explicit flags are
+optional assertions. The default track is "internal".`,
 		Example: `  # publish to the internal track
   google-play-publisher publish -p com.example.app -f app-release.aab -t internal
 
@@ -69,14 +72,14 @@ the edit. The default track is "internal".`,
 	}
 
 	f := cmd.Flags()
-	f.StringVarP(&flags.Package, "package", "p", "", "application id")
+	f.StringVarP(&flags.Package, "package", "p", "", "application id (default: from the AAB)")
 	f.StringVarP(&flags.AAB, "aab", "f", "", "path to a signed .aab file")
 	f.StringVar(&flags.Metadata, "metadata", "", "path to AGP output-metadata.json")
 	f.StringVarP(&flags.Track, "track", "t", "internal", "release track")
 	f.StringVar(&flags.Status, "status", "completed", "release status: draft, inProgress or completed")
 	f.Float64Var(&flags.Rollout, "rollout", 0, "staged rollout fraction between 0 and 1")
 	f.StringVar(&flags.ChangelogDir, "changelog-dir", "", "directory with <locale>/changelogs/<versionCode>.txt release notes")
-	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code used to look up changelog files and verify the upload")
+	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code assertion (default: from the AAB)")
 	f.StringVar(&flags.ReleaseName, "release-name", "", "release name shown in Play Console")
 	f.BoolVar(&flags.ChangesNotSentForReview, "changes-not-sent-for-review", false,
 		"save changes without sending them for review")
@@ -102,14 +105,6 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 	if cmd.Flags().Changed("version-code") && flags.VersionCode <= 0 {
 		return exitcode.Errorf(exitcode.Usage, "--version-code must be positive, got %d", flags.VersionCode)
 	}
-	if flags.ChangelogDir != "" && flags.VersionCode <= 0 {
-		return exitcode.Errorf(exitcode.Usage, "--version-code is required with --changelog-dir")
-	}
-
-	notes, err := readChangelogDir(flags.ChangelogDir, flags.VersionCode)
-	if err != nil {
-		return err
-	}
 
 	status := flags.Status
 	if !cmd.Flags().Changed("status") {
@@ -120,12 +115,12 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		Package:                 flags.Package,
 		AABPath:                 flags.AAB,
 		MetadataPath:            flags.Metadata,
+		ChangelogDir:            flags.ChangelogDir,
 		VersionCode:             flags.VersionCode,
 		Track:                   flags.Track,
 		Status:                  status,
 		Rollout:                 flags.Rollout,
 		RolloutSet:              cmd.Flags().Changed("rollout"),
-		Notes:                   notes,
 		ReleaseName:             flags.ReleaseName,
 		IfExists:                exists,
 		ChangesNotSentForReview: flags.ChangesNotSentForReview,
@@ -139,7 +134,8 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 	if err != nil {
 		return err
 	}
-	// Keep the JSON error object complete when --package came from metadata.
+	defer func() { _ = prepared.Close() }()
+	// Keep the JSON error object complete when --package came from the AAB or metadata.
 	if flags.Package == "" {
 		_ = cmd.Flags().Set("package", prepared.Package())
 	}
@@ -208,6 +204,7 @@ func parseInReview(raw string) (string, error) {
 
 func writePublishJSON(w io.Writer, result appcore.PublishResult, duration time.Duration) error {
 	out := publishOutput{
+		SchemaVersion:     1,
 		OK:                true,
 		Command:           "publish",
 		Package:           result.Package,
@@ -215,6 +212,7 @@ func writePublishJSON(w io.Writer, result appcore.PublishResult, duration time.D
 		Status:            result.Status,
 		VersionCode:       result.VersionCode,
 		SHA256:            result.SHA256,
+		VersionName:       result.VersionName,
 		EditID:            result.EditID,
 		Review:            result.Review,
 		ManagedPublishing: "unknown",

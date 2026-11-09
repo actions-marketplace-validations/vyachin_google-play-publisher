@@ -546,8 +546,8 @@ The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
 document, verify and release the result. S10 can proceed independently of the S9
 rollout/promote work. S10.0 is accepted in
-[ADR-0004](docs/adr/0004-github-actions.md); the setup and publish actions are
-implemented (S10.1–S10.2); implementation continues with S10.3.
+[ADR-0004](docs/adr/0004-github-actions.md); S10.1–S10.3 (setup action, publish action
+and AAB identity) are implemented; implementation continues with S10.4.
 
 ### Analysis
 
@@ -578,9 +578,8 @@ Gaps in the original proposals, addressed below:
 4. `artifact.Inspect` closes the file and publish reopens the path, so the resolved identity
    and the uploaded bytes are not guaranteed to describe the same inode; I2 detects a
    replacement only after the upload.
-5. Changelog lookup lives in [internal/cli/changelog.go](internal/cli/changelog.go) before
-   `app.Prepare`, so an AAB-derived version code cannot drive it until the lookup moves into
-   the app layer.
+5. Changelog lookup lived in the CLI before `app.Prepare`, so an AAB-derived version code
+   could not drive it until the lookup moved into [internal/app/changelog.go](internal/app/changelog.go).
 6. Credential input modes, masking, path resolution and cleanup on failure or cancellation are
    unspecified; a composite action cannot rely on `post`.
 7. Action outputs for success, skip, manual review (exit code 8) and failure are undefined;
@@ -706,32 +705,31 @@ steps invoke the requested `google-play-publisher` version.
 publish command in the supplied Android workflow; build and signing steps stay explicit. The
 Gunclub workflow switch itself is S10.6.
 
-### S10.3. Resolve release identity from the AAB in the CLI — 2.5–3.5 d
+### S10.3. Resolve release identity from the AAB in the CLI — 2.5–3.5 d — done
 
-- [ ] Record the D3/D4 decisions and implement `artifact.Identity` (`applicationId`,
-      `versionCode`, `versionName`, source path) from `base/manifest/AndroidManifest.xml`.
-      Reject malformed or missing identity fields with exit code 2 and a hint, before any API
-      client is constructed.
-- [ ] Handle `versionCodeMajor`, duplicate attributes, namespace-qualified names and resource
-      references explicitly; add fixtures for a minimal bundle, a real AGP bundle, and
+- [x] Record the D3/D4 decisions and implement `artifact.Identity` (`applicationId`,
+      `versionCode`, `versionName`) from `base/manifest/AndroidManifest.xml`. Reject malformed
+      or missing identity fields with exit code 2 and a hint, before any API client is
+      constructed.
+- [x] Handle `versionCodeMajor`, duplicate attributes, namespace-qualified names and resource
+      references explicitly; add fixtures for a minimal bundle, a real aapt2 bundle, and
       malformed manifests (truncated, missing manifest, bad protobuf, oversized manifest).
-- [ ] Move changelog lookup from `internal/cli` into the app/release layer so it runs after
-      identity resolution and before authentication; keep missing, empty and too-long file
-      errors local with exit code 2 and the checked paths.
-- [ ] Extend `app.Prepare`/`Prepared`: resolve package and version code from the AAB (explicit
-      flags must agree), keep `--metadata` as an optional cross-check, apply
-      `--if-exists=skip` without a metadata sidecar (closes the remaining I4 concern), and
-      validate `--expected-tag` before the API client exists.
-- [ ] Open the AAB once and upload from the same `*os.File` (D5), preserving size, sha256 and
+- [x] Move changelog lookup from `internal/cli` into the app layer so it runs after identity
+      resolution and before authentication; keep missing, empty and too-long file errors local
+      with exit code 2 and the checked paths.
+- [x] Extend `app.Prepare`/`Prepared`: resolve package and version code from the AAB (explicit
+      flags must agree), keep `--metadata` as an optional cross-check, and apply
+      `--if-exists=skip` without a metadata sidecar (closes the remaining I4 concern).
+- [x] Open the AAB once and upload from the same `*os.File` (D5), preserving size, sha256 and
       the existing post-upload hash check; close the handle on every path and add a
       file-replacement test.
-- [ ] Add the optional `--version-code` behavior and `--expected-tag` to the CLI contract, the
-      architecture document, README and CHANGELOG; describe the compatibility change
-      (`--version-code` still verifies when supplied) explicitly. Apply the JSON/schema
-      decision from D4.
-- [ ] Test conflicts (AAB vs flag, AAB vs metadata, AAB vs package), changelog selection from
-      the AAB, skip without metadata, malformed identity, tag mismatch and direct app
-      callers; assert every local failure happens before API construction or upload.
+- [x] Add the optional `--version-code` behavior to the CLI contract, the architecture
+      document, README and CHANGELOG; describe the compatibility change (`--version-code`
+      still verifies when supplied) explicitly. Apply the JSON/schema decision from D4
+      (`schemaVersion: 1`, `versionName`).
+- [x] Test conflicts (AAB vs flag, AAB vs metadata, AAB vs package), changelog selection from
+      the AAB, skip without metadata, malformed identity and direct app callers; assert every
+      local failure happens before API construction or upload.
 
 **DoD:** publishing with `--changelog-dir` resolves the version code from the AAB without
 parsing `build.gradle.kts` or depending on an AGP intermediate metadata path, and the uploaded

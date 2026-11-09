@@ -57,12 +57,15 @@ func TestPublishJSONUsageError(t *testing.T) {
 	if got["command"] != "publish" {
 		t.Fatalf("command = %v, want publish", got["command"])
 	}
+	if got["schemaVersion"] != float64(1) {
+		t.Fatalf("schemaVersion = %v, want 1", got["schemaVersion"])
+	}
 
 	detail := errorObject(t, got)
 	if detail["code"] != "usage" || detail["exitCode"] != float64(exitcode.Usage) {
 		t.Fatalf("unexpected error object: %v", detail)
 	}
-	if !strings.Contains(detail["message"].(string), "--package") {
+	if !strings.Contains(detail["message"].(string), "--aab") {
 		t.Fatalf("message does not explain the problem: %v", detail["message"])
 	}
 	if !strings.Contains(errOut, detail["message"].(string)) || !strings.Contains(errOut, "--help") {

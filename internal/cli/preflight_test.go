@@ -37,6 +37,10 @@ func TestPublishLocalValidationBeforeClient(t *testing.T) {
 		{"rollout out of range", []string{"publish", "-p", "com.example.app", "-f", aab, "--rollout", "2"}},
 		{"NaN rollout", []string{"publish", "-p", "com.example.app", "-f", aab, "--rollout", "NaN"}},
 		{"invalid AAB", []string{"publish", "-p", "com.example.app", "-f", notAAB}},
+		{"package does not match AAB", []string{"publish", "-p", "com.example.other", "-f", aab}},
+		{"version code does not match AAB", []string{
+			"publish", "-p", "com.example.app", "-f", aab, "--version-code", "41",
+		}},
 		{"metadata mismatch", []string{
 			"publish", "-p", "com.example.other", "-f", aab, "--metadata", writeMetadata(t, 42),
 		}},

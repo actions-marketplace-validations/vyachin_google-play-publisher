@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vyachin/google-play-publisher/internal/artifact/artifacttest"
 	"github.com/vyachin/google-play-publisher/internal/cli"
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/play"
@@ -39,7 +40,10 @@ func runWithAPI(t *testing.T, api play.API, args ...string) (stdout, stderr stri
 }
 
 func writeAAB(t *testing.T) string {
-	return writeBundleFiles(t, map[string]string{"BundleConfig.pb": "bundle-config"})
+	return writeBundleFiles(t, map[string]string{
+		"BundleConfig.pb":                   "bundle-config",
+		"base/manifest/AndroidManifest.xml": string(artifacttest.Manifest("com.example.app", 42, "1.0.42")),
+	})
 }
 
 func writeBundleFiles(t *testing.T, files map[string]string) string {
@@ -99,6 +103,29 @@ func TestPublishJSON(t *testing.T) {
 	}
 	if got["versionCode"] != float64(42) {
 		t.Fatalf("versionCode = %v", got["versionCode"])
+	}
+	if got["schemaVersion"] != float64(1) {
+		t.Fatalf("schemaVersion = %v, want 1", got["schemaVersion"])
+	}
+	if got["versionName"] != "1.0.42" {
+		t.Fatalf("versionName = %v, want 1.0.42", got["versionName"])
+	}
+}
+
+func TestPublishPackageFromAAB(t *testing.T) {
+	out, errOut, code := runWithAPI(t, &playtest.Fake{}, "--json", "publish",
+		"-f", writeAAB(t))
+
+	if code != int(exitcode.OK) {
+		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not JSON: %v (%q)", err, out)
+	}
+	if got["package"] != "com.example.app" {
+		t.Fatalf("package = %v, want the AAB applicationId", got["package"])
 	}
 }
 
@@ -287,15 +314,19 @@ func TestPublishRejectsReleaseNotesFlag(t *testing.T) {
 	}
 }
 
-func TestPublishChangelogDirRequiresVersionCode(t *testing.T) {
-	_, errOut, code := runWithAPI(t, &playtest.Fake{}, "publish",
-		"-p", "com.example.app", "-f", writeAAB(t), "--changelog-dir", t.TempDir())
+func TestPublishChangelogDirUsesAABVersionCode(t *testing.T) {
+	root := t.TempDir()
+	writeChangelog(t, root, "en-US", 42, "Bug fixes")
 
-	if code != int(exitcode.Usage) {
-		t.Fatalf("code = %d, want %d", code, exitcode.Usage)
+	fake := &playtest.Fake{}
+	_, errOut, code := runWithAPI(t, fake, "publish",
+		"-p", "com.example.app", "-f", writeAAB(t), "--changelog-dir", root)
+
+	if code != int(exitcode.OK) {
+		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut)
 	}
-	if !strings.Contains(errOut, "--version-code is required") {
-		t.Fatalf("unexpected stderr: %q", errOut)
+	if len(fake.UpdatedReleases) != 1 || len(fake.UpdatedReleases[0].ReleaseNotes) != 1 {
+		t.Fatalf("release notes were not attached: %#v", fake.UpdatedReleases)
 	}
 }
 
