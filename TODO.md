@@ -3,12 +3,11 @@
 **Status:** v0.1.0 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
 S14 (metadata pull), S15 (single metadata flag), S16 (text-only logs) and S17 (no CLI
 endpoint override) are done; S0 (Play Console access) was deferred by agreement, and the
-former S9 post-MVP list was dropped as out of scope. The
-post-S10 review (R16–R19, I7–I9) is fixed and released, including the removal of
-`--expected-tag` in S11.8; S11.9 fixes the publish action invocation and supersedes v0.0.6.
-The Gunclub workflow switch is done in that repository, and the live publish/upload runs
-succeeded against a real app; the remaining open items are the S0 configuration checklist and
-the I3 evidence update.
+former S9 post-MVP list was dropped as out of scope. The post-S10 review (R16–R19, I7–I9)
+is fixed and released, including the removal of `--expected-tag` in S11.8; S11.9 fixes the
+publish action invocation and supersedes v0.0.6. The downstream workflow switch is done in the
+consuming repository, and the live publish/upload runs succeeded against a real app; the
+remaining open items are the S0 configuration checklist and the I3 evidence update.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -35,9 +34,9 @@ debug mode, machine-readable output and an extensible command structure.
 | S6 | CLI polish | 0.5–1 d | UX/help/completion |
 | S7 | Quality and CI | 1–1.5 d | Green pipeline, integration run |
 | S8 | v0.1 release | 0.5–1 d | Binaries and instructions |
-| S8.1 | v0.0.2: Gunclub migration (notes from changelogs, release name) | 1–1.5 d | v0.0.2 published with `--changelog-dir` |
+| S8.1 | v0.0.2: downstream migration (notes from changelogs, release name) | 1–1.5 d | v0.0.2 published with `--changelog-dir` |
 | S8.2 | v0.0.3: follow-up review fixes (R11–R15, I5–I6) | — | v0.0.3 published with verified checksums |
-| S10 | GitHub Actions setup/publish actions and AAB identity | 7.5–12 d | Actions tested without Play access; v0.0.5 released; Gunclub switch done |
+| S10 | GitHub Actions setup/publish actions and AAB identity | 7.5–12 d | Actions tested without Play access; v0.0.5 released; downstream switch done |
 | S11 | Post-S10 review fixes: commit outcomes, doctor identity, action result files | 3.5–6 d | R16–R19 and I7–I9 fixed with tests/docs; v0.0.6 released |
 | S12 | Release fields, `rollout` and `promote` | 1.5–2.5 d | Priority/targeting on publish; track changes without a new upload |
 | S13 | Store metadata in the publish edit | 1.5–2 d | Listings, images and testers committed with the AAB |
@@ -364,13 +363,13 @@ verification) remains open until S0 access exists. The fixes are listed in the v
   Reconcile these contracts: document/enforce the metadata prerequisite or resolve
   identity from the AAB so skip also works without the sidecar. Test both variants.
 
-## S8.1. v0.0.2 — Gunclub release pipeline migration [unplanned]
+## S8.1. v0.0.2 — Downstream release pipeline migration [unplanned]
 
-Context: the Gunclub repository (a separate checkout) replaces Fastlane with this tool. The
+Context: the downstream repository (a separate checkout) replaces Fastlane with this tool. The
 contract is the OpenSpec change `android/openspec/changes/replace-fastlane-with-go-publisher/`
 there: read `design.md` (decisions D2 and D5) and `tasks.md` (group 1) before starting.
-Gunclub's `.github/workflows/android.yml` needs the flags below, so v0.0.2 must be published
-before that workflow switch is committed.
+The downstream repository's `.github/workflows/android.yml` needs the flags below, so v0.0.2
+must be published before that workflow switch is committed.
 
 Task 1.1 of that change is implemented and committed (breaking CLI change, see the v0.0.2
 section of [CHANGELOG.md](CHANGELOG.md)): `--release-notes` and its JSON reader are removed;
@@ -392,11 +391,11 @@ mismatch, the removed flag (unknown flag, code 2) and publishing without notes.
   (mark the removal of `--release-notes` as breaking, which is allowed in 0.x),
   [docs/02-architecture.md](docs/02-architecture.md) (the `--metadata` prerequisite) and
   `docs/README.md` (close the "Remaining questions" item about the notes format).
-  Two corrections came out of the Gunclub migration and belong in the docs: AGP does not write
-  `build/outputs/bundle/<variant>/output-metadata.json` for `bundleRelease` (the listing file
-  stays under `build/intermediates/bundle_ide_model/...`), so `--metadata` must not be
-  advertised for AAB publishing; and `--dry-run` really uploads the bundle, so its version code
-  may stay used after the edit is deleted.
+  Two corrections came out of the downstream migration and belong in the docs: AGP does not
+  write `build/outputs/bundle/<variant>/output-metadata.json` for `bundleRelease` (the listing
+  file stays under `build/intermediates/bundle_ide_model/...`), so `--metadata` must not be
+  advertised for AAB publishing; and `--dry-run` really uploads the bundle, so its version
+  code may stay used after the edit is deleted.
   Acceptance: `grep -rn -- "--release-notes" docs README.md` is empty and `CHANGELOG.md`
   mentions the removal only as a breaking change; the docs describe `--changelog-dir`,
   `--version-code` and `--release-name`; `make lint` is clean and every link in
@@ -418,10 +417,10 @@ mismatch, the removed flag (unknown flag, code 2) and publishing without notes.
   (`9b7f64a6ea6e0de277c98b544475d6c0ae8cf6adc77a1643daefc0169542552b`).
 
 **DoD:** v0.0.2 is published with `--changelog-dir`, `--version-code` and `--release-name`;
-Gunclub's `android.yml` can install the binary and publish with
+the downstream repository's `android.yml` can install the binary and publish with
 `--changelog-dir metadata --version-code "$VERSION_CODE"`.
-**Gate:** do not commit Gunclub's workflow switch before this release exists; it calls the new
-flags.
+**Gate:** do not commit the downstream repository's workflow switch before this release exists;
+it calls the new flags.
 
 ## S8.2. v0.0.3 — follow-up review fixes [unplanned]
 
@@ -550,8 +549,8 @@ The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
 document, verify and release the result. S10.0 is accepted in
 [ADR-0004](docs/adr/0004-github-actions.md); S10.1–S10.6 are implemented and v0.0.5 is
-released. The Gunclub workflow switch was performed in that repository, and live publication
-has been exercised against a real app.
+released. The downstream workflow switch was performed in the consuming repository, and live
+publication has been exercised against a real app.
 
 ### Analysis
 
@@ -566,7 +565,7 @@ Reusable pieces that already exist:
 - local validation already happens before authentication (`app.Prepare`), which keeps action
   tests possible without Play credentials; the fake API in `internal/play/playtest`, the
   injected API factory and `--endpoint` keep tests network-free.
-- the Gunclub workflow installs the binary with a curl/checksum/tar script and parses Gradle
+- the downstream workflow installs the binary with a curl/checksum/tar script and parses Gradle
   sources for the version code; S10.1 and S10.3 replace both.
 
 Gaps in the original proposals, addressed below:
@@ -574,8 +573,8 @@ Gaps in the original proposals, addressed below:
 1. No design gate: composite actions have no `pre`/`post` steps, so credential cleanup,
    outputs and summary behavior must be designed before the YAML is written.
 2. No release/versioning stage: an action ref and a CLI version are different coordinates.
-   Documentation may reference released refs only, and Gunclub must not switch before the
-   release that contains the actions exists (the S8.1 gate repeats here).
+   Documentation may reference released refs only, and the downstream workflow must not switch
+   before the release that contains the actions exists (the S8.1 gate repeats here).
 3. AAB identity is not trivial: the bundle stores `base/manifest/AndroidManifest.xml` as
    protobuf XML (`aapt.pb.XmlNode`), not binary AXML. The parser choice, `versionCodeMajor`,
    resource references and malformed manifests need explicit decisions and fixtures.
@@ -707,7 +706,7 @@ steps invoke the requested `google-play-publisher` version.
 
 **DoD:** a single publish step replaces installation, Google Play key decoding and the shell
 publish command in the supplied Android workflow; build and signing steps stay explicit. The
-Gunclub workflow switch itself was performed in the Gunclub repository (see S10.6).
+downstream workflow switch itself was performed in the consuming repository (see S10.6).
 
 ### S10.3. Resolve release identity from the AAB in the CLI — 2.5–3.5 d — done
 
@@ -791,23 +790,23 @@ setup-only usage, authentication, path semantics, outputs and failure handling a
 local stub verification and pending live verification have separate recorded statuses. S10.6
 replaced the placeholders with `v0.0.5`/`0.0.5` and verified the release artifacts.
 
-### S10.6. Release the CLI and switch the Gunclub workflow — 0.5–1 d — done
+### S10.6. Release the CLI and switch the downstream workflow — 0.5–1 d — done
 
 - [x] Cut the next CLI release `v0.0.5`: tag, run the release workflow, verify the archives
       and `checksums.txt` exactly as in M4/M5, and record the evidence here.
 - [x] Publish the action code at `v0.0.5`; the setup script installed the released
       `linux_amd64` archive locally, and the CI smoke job covers `ubuntu-latest` and
       `ubuntu-24.04-arm`. The documentation pins `v0.0.5` and CLI `0.0.5`.
-- [x] Update Gunclub's `.github/workflows/android.yml`: done in the Gunclub repository (a
-      separate checkout). The switch replaced the curl/checksum/tar installation with the
-      setup/publish action, removed the Gradle `sed` parsing and the duplicate changelog
-      validation, and moved release notes to `--changelog-dir metadata`.
-- [x] Run the Gunclub workflow with stub/local checks: done; the workflow was exercised
+- [x] Update the downstream repository's `.github/workflows/android.yml`: done in the consuming
+      repository (a separate checkout). The switch replaced the curl/checksum/tar installation
+      with the setup/publish action, removed the Gradle `sed` parsing and the duplicate
+      changelog validation, and moved release notes to `--changelog-dir metadata`.
+- [x] Run the downstream workflow with stub/local checks: done; the workflow was exercised
       against a released action tag. Live publication evidence is recorded in that repository
       and in the S0/live-verification items here.
 
 **DoD:** `v0.0.5` ships the actions and AAB identity, the documentation pins the released ref,
-and Gunclub's workflow uses the setup/publish action with the AAB-derived identity.
+and the downstream workflow uses the setup/publish action with the AAB-derived identity.
 **Gate:** closed; the follow-up work is live evidence for I3, not the workflow switch.
 
 **Evidence:** [release v0.0.5](https://github.com/vyachin/google-play-publisher/releases/tag/v0.0.5),
@@ -830,13 +829,13 @@ removed in S11.8).
 | `jq` missing on self-hosted runners | Outputs and summary unavailable | Detect and fail clearly, document the prerequisite, always keep the raw result file |
 | No Play access (S0) | Live verification blocked | Stub/fake-endpoint tests; track live evidence separately under I3 |
 | Breaking CLI change in 0.x | Consumer friction | CHANGELOG entry, updated docs, defaults that preserve behavior when flags are supplied |
-| Gunclub switches too early | Broken workflow | Release gate in S10.6, same as S8.1; the switch used a released action tag |
+| The downstream workflow switches too early | Broken workflow | Release gate in S10.6, same as S8.1; the switch used a released action tag |
 
 **S10 DoD:** setup and publish actions work on Linux amd64/arm64 with checksum verification and
 safe credentials; the publish action preserves CLI exit codes and exposes documented outputs;
 `--changelog-dir` and `--if-exists=skip` work from AAB identity without Gradle parsing; docs
 are verified against `v0.0.5`; local/stub and live verification statuses are recorded
-separately. The Gunclub workflow switch was completed in that repository.
+separately. The downstream workflow switch was completed in the consuming repository.
 
 ## Post-S10 code review — 2026-11-09 [unplanned]
 
@@ -929,8 +928,8 @@ release assets and checksums are verified (see S11.7 and S11.9).
 **Goal:** close the post-S10 review, keep the documented CLI/exit-code contract accurate, and
 ship the fixes as v0.0.6.
 
-**Out of scope:** I3/S0 live verification (blocked by Play Console access) and the Gunclub
-workflow switch (external repository).
+**Out of scope:** I3/S0 live verification (blocked by Play Console access) and the downstream
+workflow switch (outside this repository).
 
 ### Analysis
 
@@ -1164,7 +1163,7 @@ ADR, CHANGELOG and TODO keep only historical or removal notes. The local gate is
 
 ### S11.9. Fix the publish action invocation and release v0.0.7 [unplanned] — done
 
-A Gunclub run with the public action exposed a release-blocking bug: `scripts/publish.sh`
+A downstream run with the public action exposed a release-blocking bug: `scripts/publish.sh`
 called the CLI without the `publish` subcommand, so every real publication failed with
 `unknown flag: --package`. The stub-based action tests could not see it because the stub
 accepts any arguments.

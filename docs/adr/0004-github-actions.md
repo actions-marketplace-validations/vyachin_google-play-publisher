@@ -169,7 +169,7 @@ semantics differ.
 **Follow-ups**
 
 - action smoke tests on both supported runner architectures (S10.5);
-- release of the CLI and actions, then the Gunclub workflow switch (S10.6);
+- release of the CLI and actions, then the downstream workflow switch (S10.6);
 - live publication through the action when S0 access exists (I3).
 
 ## References
