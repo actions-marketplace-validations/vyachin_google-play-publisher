@@ -1,10 +1,9 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.5 released. Stages S1–S8, S8.1, S8.2 and S10 are done; S0 (Play Console
-access) was deferred by agreement; S9 is post-MVP. The post-S10 review (R16–R19, I7–I9) is
-implemented locally as S11, including the removal of `--expected-tag` in S11.8; v0.0.6 is not
-tagged yet. The Gunclub workflow switch is an external follow-up and live verification waits
-for S0.
+**Status:** v0.0.6 released. Stages S1–S8, S8.1, S8.2, S10 and S11 are done; S0 (Play
+Console access) was deferred by agreement; S9 is post-MVP. The post-S10 review (R16–R19,
+I7–I9) is fixed and released, including the removal of `--expected-tag` in S11.8. The Gunclub
+workflow switch is an external follow-up and live verification waits for S0.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -851,8 +850,7 @@ Each behavior fix must include regression tests and update the matching document
 
 **Status 2026-11-09:** R16–R19 and I7–I9 were re-checked against the working tree and all
 seven findings were confirmed; the analysis and the execution plan are in S11 below. The
-fixes are implemented locally with regression tests (see S11) and wait for the v0.0.6
-release.
+fixes are implemented with regression tests and released as v0.0.6 (see S11).
 
 ### Confirmed findings
 
@@ -921,12 +919,12 @@ release.
   reuse before any API call. Acceptance: publishing a closed or already-consumed Prepared
   fails locally without creating an edit; normal publication and repeated Close remain safe.
 
-## S11. Post-S10 review fixes [unplanned] — planned
+## S11. Post-S10 review fixes [unplanned] — done
 
 **Status 2026-11-09:** the seven review items were re-checked against the working tree
-(`f2117b4` plus the review notes) and all are confirmed. S11.0–S11.6 are implemented locally
-with regression tests, and S11.8 removes `--expected-tag` by owner decision; the local gate is
-green. v0.0.6 is not tagged yet, so the release step and the released-version pins remain open.
+(`f2117b4` plus the review notes) and all are confirmed. S11.0–S11.6 are implemented with
+regression tests, S11.8 removes `--expected-tag` by owner decision, and v0.0.6 is released.
+The local gate is green and the release assets and checksums are verified (see S11.7).
 
 **Goal:** close the post-S10 review, keep the documented CLI/exit-code contract accurate, and
 ship the fixes as v0.0.6.
@@ -1123,16 +1121,23 @@ survive the step.
       `shellcheck` and `scripts/check_links.py`.
 - [x] Update the review checkboxes above only when the matching fix and its regression test are
       merged; leave I3 open.
-- [ ] Release v0.0.6 through the release workflow and verify the archives and `checksums.txt`
+- [x] Release v0.0.6 through the release workflow and verify the archives and `checksums.txt`
       exactly as in M4/M5, recording the evidence here.
-- [ ] Confirm the docs pin the released version and that no document advertises unreleased
+- [x] Confirm the docs pin the released version and that no document advertises unreleased
       behavior.
 
 **Local evidence 2026-11-09:** `make lint` reports 0 issues (including shellcheck and
-actionlint); `make test` passes with 24/24 setup-script tests and 38/38 publish-script tests;
+actionlint); `make test` passes with 24/24 setup-script tests and 37/37 publish-script tests;
 `make test-race` is green; `make cover` reports 82.0% total (app 91.0%, play 85.6%, cli 88.5%,
 artifact 77.5%), above the 80% gate; `scripts/check_links.py` resolves all 14 documents.
-The v0.0.6 tag and release evidence are pending.
+
+**Release evidence 2026-11-09:** [release v0.0.6](https://github.com/vyachin/google-play-publisher/releases/tag/v0.0.6),
+release workflow run `42620073801` (success, 3m2s). `checksums.txt` contains
+`3824a583fa09103df88522f810314b0eabdf747d306ac92cb723082a0a5a5eb1` for
+`google-play-publisher_0.0.6_linux_amd64.tar.gz`; the downloaded archive has the same SHA-256.
+The released `darwin_arm64` binary reports version `0.0.6`, commit `2049abe`. The push-triggered
+`actions` workflow on `main` first failed with HTTP 404 because it ran before the release
+assets existed; it passed on re-run after publication (runs `42620063841` and `42620342198`).
 
 **DoD:** local gate is green, every review item is closed or explicitly blocked (I3), and
 v0.0.6 is released with verified checksums.
