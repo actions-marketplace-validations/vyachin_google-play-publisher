@@ -1,0 +1,37 @@
+name: integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Application id of the test app
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Write service account key
+        env:
+          SA_JSON: ${{ secrets.GPLAY_SA_JSON }}
+        run: |
+          umask 077
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/gplay-sa.json"
+
+      - name: Run live Play API tests
+        env:
+          GPLAY_INTEGRATION: "1"
+          GPLAY_PACKAGE: ${{ inputs.package }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/gplay-sa.json
+        run: go test -v -run TestLive ./internal/play

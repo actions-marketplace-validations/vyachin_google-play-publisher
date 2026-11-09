@@ -98,6 +98,23 @@ func TestDebugKeepsJSONStdoutClean(t *testing.T) {
 	}
 }
 
+func TestDebugLogsHaveNoSecrets(t *testing.T) {
+	_, errOut, code := runWithAPI(t, &playtest.Fake{}, "--debug", "publish",
+		"-p", "com.example.app", "-f", writeAAB(t))
+
+	if code != int(exitcode.OK) {
+		t.Fatalf("code = %d, want %d", code, exitcode.OK)
+	}
+	if !strings.Contains(errOut, "level=") {
+		t.Fatalf("debug logs are missing: %q", errOut)
+	}
+	for _, secret := range []string{"Authorization", "private_key", "Bearer ", "ya29."} {
+		if strings.Contains(errOut, secret) {
+			t.Fatalf("debug log leaks %q: %q", secret, errOut)
+		}
+	}
+}
+
 func TestDebugJSONLogFormat(t *testing.T) {
 	var out, errOut bytes.Buffer
 	app := &cli.App{
