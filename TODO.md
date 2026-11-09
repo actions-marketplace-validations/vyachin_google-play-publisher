@@ -1,6 +1,6 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
+**Status:** v0.1.0 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
 S14 (metadata pull), S15 (single metadata flag), S16 (text-only logs) and S17 (no CLI
 endpoint override) are done; S0 (Play Console access) was deferred by agreement, and the
 former S9 post-MVP list was dropped as out of scope. The
@@ -45,6 +45,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S15 | Consolidate metadata flags on `--metadata-dir` | 0.5 d | One metadata flag; `promote` applies the full tree |
 | S16 | Remove JSON log format | 0.25 d | One JSON flag: `--json` for the result only |
 | S17 | Remove the CLI endpoint override | 0.25 d | Production flags cannot redirect the Play client |
+| S18 | Release v0.1.0 | 0.25 d | Tagged release with verified archives and checksums |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -1378,3 +1379,15 @@ remove it from the user-facing CLI, where it can redirect an authenticated clien
 
 **DoD:** the CLI exposes only `--debug`, `--json`, `--timeout` and `--credentials` as global
 flags; `play.Options.Endpoint` still serves the adapter tests; the local gate is green.
+
+## S18. Release v0.1.0 — 0.25 d — in progress [unplanned]
+
+**Goal:** publish the accumulated release: `pull`, store metadata in publish and promote, and
+the consolidated CLI surface.
+
+- [x] Move the CHANGELOG `Unreleased` section to `v0.1.0` and bump action/CLI pins to `0.1.0`.
+- [ ] Tag `v0.1.0` and verify the release workflow, archives and `checksums.txt`.
+- [ ] Record release evidence.
+
+**DoD:** `v0.1.0` is published with verified archives and checksums, and the documented pins
+point at that release.
