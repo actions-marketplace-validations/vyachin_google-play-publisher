@@ -1,18 +1,34 @@
 # google-play-publisher
 
-A Go CLI that publishes a signed Android App Bundle (AAB) to Google Play.
+Publish signed Android App Bundles to Google Play from your terminal or CI pipeline.
+Promote existing builds between tracks, manage staged rollouts, and keep store metadata in Git.
 
 [![CI](https://github.com/vyachin/google-play-publisher/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vyachin/google-play-publisher/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/vyachin/google-play-publisher?sort=semver&style=flat-square)](https://github.com/vyachin/google-play-publisher/releases/latest)
 [![Go version](https://img.shields.io/github/go-mod/go-version/vyachin/google-play-publisher?style=flat-square)](https://github.com/vyachin/google-play-publisher/blob/main/go.mod)
 [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue?style=flat-square)](https://github.com/vyachin/google-play-publisher/releases/latest)
-[![AI-assisted](https://img.shields.io/badge/AI--assisted-DeepSeek%20%2B%20Codex-blueviolet?style=flat-square)](#development-disclosure)
 
-**Status:** v0.1.1. Publishing targets the `internal` track.
+## Use cases
+
+- **Automate releases:** upload a signed AAB to a testing or production track, locally or
+  [from GitHub Actions](#github-actions).
+- **Ship the build you tested:** [promote an existing release](#promote-a-tested-build) from
+  internal testing to beta or production without rebuilding or uploading it again.
+- **Control delivery:** [increase, pause, resume or complete a staged rollout](#manage-a-staged-rollout)
+  without a new bundle.
+- **Review store changes in Git:** [pull listings, images, tester groups and release notes](#keep-store-metadata-in-git),
+  then apply them with the next release.
+
+The tool publishes an already signed AAB to an app that exists in Play Console. Building,
+signing, first publication and legal declarations stay outside the CLI.
 
 ## Installation
 
-From source:
+Download a binary for Linux, macOS or Windows (amd64 or arm64) from
+[GitHub Releases](https://github.com/vyachin/google-play-publisher/releases/latest), verify
+its archive against `checksums.txt`, and put `google-play-publisher` on your `PATH`.
+
+To install from source with Go:
 
 ```bash
 git clone https://github.com/vyachin/google-play-publisher.git
@@ -20,156 +36,113 @@ cd google-play-publisher
 go install ./cmd/google-play-publisher
 ```
 
-Prebuilt binaries for linux/darwin/windows (amd64/arm64) are published on GitHub Releases;
-verify them with `checksums.txt`.
+## Quick start
 
-## Authentication
-
-You need a service account JSON key whose account is added to Play Console with the
-"Release to testing tracks" permission. Pass the key in one of two ways:
+You need an app that already has an uploaded build in Play Console and a service account
+with access to it. For internal testing, grant the account the "Release to testing tracks"
+permission. Follow the [Play Console setup guide](docs/04-play-console-setup.md) to configure
+API access and permissions for your target track.
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
-# or
-google-play-publisher publish ... --credentials /path/to/sa.json
-```
 
-Full setup instructions: [docs/04-play-console-setup.md](docs/04-play-console-setup.md).
-
-## Quick start
-
-```bash
-# 1. Check access, the target track and the AAB identity
+# Check access, the target track and the signed bundle.
 google-play-publisher doctor -p com.example.app -f app-release.aab
 
-# 2. Publish to internal; package and versionCode come from the AAB
-google-play-publisher publish -f app-release.aab -t internal
+# Upload and publish to internal testing (the default track).
+google-play-publisher publish -f app-release.aab
 
-# 3. Show releases
+# Check the releases on the track.
 google-play-publisher status -p com.example.app -t internal
 ```
 
-The CLI reads `package`, `versionCode` and `versionName` from the AAB manifest. Passing
-`--package` or `--version-code` is optional and acts as an assertion: a value that does not
-match the AAB fails with exit code 2 before any network call. `doctor` applies the same
-manifest checks when `--aab` is passed.
+You can pass `--credentials /path/to/sa.json` instead of setting the environment variable.
+The CLI reads the package name and version code from the AAB manifest. Optional `--package`
+and `--version-code` flags assert the expected values; a mismatch fails before any network call.
 
-`--json` prints a machine-readable result to stdout; logs go to stderr:
+## Promote a tested build
 
-```bash
-google-play-publisher --json publish -p com.example.app -f app-release.aab > publish.json
-```
-
-## Release notes
-
-Release notes live in the same metadata tree as listings and images: one file per locale named
-after the `versionCode`. A changelog-only tree is valid.
-
-```
-metadata/
-  en-US/changelogs/42.txt   # "Bug fixes"
-  de-DE/changelogs/42.txt   # "Fehlerbehebungen"
-```
-
-```bash
-google-play-publisher publish -f app-release.aab \
-  --metadata-dir metadata --release-name 1.0.42
-```
-
-The AAB version code selects the changelog files, so `--version-code` is not required; when
-supplied it is checked against the AAB and the upload. Locales without a file for that version
-code are skipped; when the directory contains neither store metadata nor a changelog for the
-AAB version code, the command fails with exit code 2 before any edit is created. `--release-name` is optional; when it is empty,
-Play generates the name from the AAB version name.
-
-## Store metadata
-
-`--metadata-dir` applies store listings, images and tester groups in the same edit as the AAB,
-so one commit publishes the bundle and its store presence together:
-
-```
-metadata/
-  en-US/
-    title.txt                # <= 30 characters
-    short_description.txt    # <= 80 characters
-    full_description.txt     # <= 4000 characters
-    video.txt                # optional
-    images/
-      icon.png               # 512x512
-      featureGraphic.png     # 1024x500
-      phoneScreenshots/001.png
-    changelogs/42.txt        # release notes
-  testers/
-    internal.txt             # one Google Group per line
-```
-
-```bash
-google-play-publisher publish -f app-release.aab -t internal --metadata-dir metadata
-```
-
-The image sets and tester files that are present are authoritative: screenshots removed from a
-directory are removed from Play when the edit commits, and an empty screenshot directory clears
-that type. Every listing, image and tester file is validated before the API client is created
-(text limits, PNG/JPEG, icon 512x512, feature graphic 1024x500, 8 MiB per file), so a typo fails
-with exit code 2 instead of consuming an edit. The same directory also carries release notes
-under `changelogs/`; a tree with only changelogs is accepted.
-
-### Recreating the tree from Play
-
-`pull` downloads the current listings, images, tester groups and release notes and writes a
-metadata directory in the same layout, ready to commit:
-
-```bash
-google-play-publisher pull -p com.example.app --metadata-dir metadata
-# alias
-google-play-publisher download -p com.example.app --metadata-dir metadata
-```
-
-The target must be absent or empty. `--force` replaces a non-empty tree; the download is staged
-and validated first, so a failure leaves the previous tree untouched. `--track` selects the
-track whose release notes are pulled (default `internal`). Without `--version-code`, notes from
-every release on the track are pulled; pass it to pull one specific release. Tester groups are
-pulled for testing tracks only; production is skipped because Play exposes no testers there.
-Pull creates a read-only edit, never commits it and deletes it best-effort, so it consumes the
-daily edit quota but changes nothing in Play.
-
-The generated images are full-size originals (not Play's preview thumbnails), and screenshots
-are numbered in display order. A pulled tree round-trips through
-`publish --metadata-dir`: review it, commit it, and publish the next release with the same
-store presence.
-
-## Staged rollouts and promotion
-
-`rollout` changes a release that is already on a track without uploading a bundle:
-
-```bash
-# raise a staged rollout to 20% of users
-google-play-publisher rollout -p com.example.app -t production --fraction 0.2
-
-# halt it, then resume from the stored fraction
-google-play-publisher rollout -p com.example.app -t production --version-code 42 --halt
-google-play-publisher rollout -p com.example.app -t production --version-code 42 --fraction 0.2
-
-# finish the rollout
-google-play-publisher rollout -p com.example.app -t production --version-code 42 --complete
-```
-
-`promote` declares the version codes of one track on another, so no second build is needed:
+Move the same build through your release process without rebuilding it:
 
 ```bash
 google-play-publisher promote -p com.example.app --from internal --to beta
+
+# Start a production rollout for version code 42 at 10%.
 google-play-publisher promote -p com.example.app --from beta --to production \
   --version-code 42 --rollout 0.1 --yes
 ```
 
-`--to production` requires `--yes`. `promote --metadata-dir` applies listings, images, testers
-and release notes in the same edit. Release notes are read only together with `--version-code`;
-without it, changelog files are ignored and the source release notes and name are reused.
+Without `--version-code`, promotion selects the source release with the highest version code,
+excluding drafts. Promotion to production requires `--yes` and never prompts interactively.
+
+## Manage a staged rollout
+
+After a release reaches a track, adjust its rollout without uploading another AAB:
+
+```bash
+# Increase the rollout to 20%.
+google-play-publisher rollout -p com.example.app -t production --version-code 42 --fraction 0.2
+
+# Pause, then resume at 20%.
+google-play-publisher rollout -p com.example.app -t production --version-code 42 --halt
+google-play-publisher rollout -p com.example.app -t production --version-code 42 --fraction 0.2
+
+# Release to all users.
+google-play-publisher rollout -p com.example.app -t production --version-code 42 --complete
+```
+
+To start a staged rollout with a new AAB, use `publish -t production --rollout 0.1`.
+
+## Keep store metadata in Git
+
+Download an existing app's store metadata into a directory you can review and commit:
+
+```bash
+google-play-publisher pull -p com.example.app --metadata-dir metadata
+```
+
+The directory must be absent or empty. Use `--force` to replace an existing tree; the download
+is staged and validated before replacement. Pull does not change anything in Play, but it
+creates a temporary edit and consumes edit quota. Release notes come from `internal` by default;
+use `--track` to select another track.
+
+The same layout holds listings, images, release notes and tester groups:
+
+```text
+metadata/
+  en-US/
+    title.txt
+    short_description.txt
+    full_description.txt
+    images/
+      icon.png
+      featureGraphic.png
+      phoneScreenshots/001.png
+    changelogs/42.txt
+  de-DE/
+    changelogs/42.txt
+  testers/
+    internal.txt
+```
+
+Edit the files, then apply them in the same edit as the next AAB:
+
+```bash
+google-play-publisher publish -f app-release.aab --metadata-dir metadata
+```
+
+Release notes are selected by the AAB version code: version `42` uses
+`<locale>/changelogs/42.txt`. A directory containing only release notes is also valid.
+
+Text and images are validated locally before API access. Present image sets and tester files
+replace their counterparts in Play; an empty screenshot directory clears that image type.
+Review deletions before publishing. See the [CLI reference](docs/03-cli-contract.md)
+for the full layout and validation rules.
 
 ## GitHub Actions
 
-A setup action installs a released CLI and a publish action runs the same command as the CLI,
-with key decoding, JSON capture and Job Summary:
+The publish action installs the CLI, publishes the signed AAB, captures the JSON result and
+writes a job summary. Add these steps after your bundle build on a Linux runner:
 
 ```yaml
 - name: Write the service-account key
@@ -185,63 +158,56 @@ with key decoding, JSON capture and Job Summary:
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
-    metadata-dir: android/metadata
     credentials-file: ${{ runner.temp }}/sa.json
 ```
 
-`credentials-file` is the preferred mode: the value is passed to the CLI as
-`--credentials /path/to/sa.json`. `credentials-base64` remains available when the secret is
-stored base64-encoded.
+Serialize publishing jobs for the same app with a shared `concurrency` group to avoid
+conflicting Play edits. The [GitHub Actions guide](docs/07-github-actions.md) covers complete
+workflows, metadata, outputs and the setup action for running CLI commands directly.
 
-See [docs/07-github-actions.md](docs/07-github-actions.md) for both usage patterns, credential
-modes, outputs and troubleshooting. The actions are released as v0.1.1; do not use `@main` in
-production.
+For other CI systems, invoke the CLI with `--json` to capture a machine-readable result;
+logs go to stderr:
 
-## Useful options
+```bash
+google-play-publisher publish -f app-release.aab --json > publish.json
+```
 
-- `--dry-run` — upload the AAB and validate the edit without committing. The upload still
-  consumes the `versionCode`, so never dry-run a release build.
-- `--debug` — detailed HTTP, phase and retry logs (secrets are redacted).
-- `--if-exists=skip` — idempotent rerun when the AAB version code is already on the track.
-- `--in-app-update-priority 0..5` — in-app update priority of the release; it cannot change once
-  the rollout has started.
-- `--country DE,AT --include-rest-of-world` — country targeting; Play accepts it only for an
-  `inProgress` release on the `production` track.
-- `pull --force` — replace an existing metadata directory after a successful, validated pull.
-- `google-play-publisher completion bash|zsh|fish|powershell` — shell completion.
+## Before publishing
 
-## Limitations
-
-- The app must already exist in Play Console and have at least one uploaded build.
-- The first app publication and legal declarations are done manually in Play Console.
-- Managed publishing does not affect `internal`; for other tracks publishing may require
-  a manual "Publish changes".
-- The tool does not sign AABs.
-
-## Development disclosure
-
-This project is developed with substantial AI assistance. Much of the implementation, tests and
-documentation was produced with **DeepSeek Harness (deepseek-flash)** and **OpenAI Codex**,
-under human direction and review. The maintainer owns the architecture, release process and
-verification; CI builds and tests every release.
-
-If you are looking for a project without AI involvement, this is not it.
+- The CLI does not build or sign AABs, create apps, or complete their first publication.
+- Managed publishing can hold changes on testing and production tracks for a manual
+  "Publish changes" step; it does not apply to `internal`.
+- `publish --dry-run` uploads the AAB and validates the edit without committing it. The version
+  code may remain used after cleanup, so reserve a separate version code for dry runs.
+- `--if-exists=skip` makes a repeated publish a no-op when the version code is already on the
+  target track.
+- Exit code `8` means the release was saved but needs manual submission for review in Play
+  Console. See [errors and exit codes](docs/05-errors.md) for recovery steps.
 
 ## Documentation
 
-- [Design and constraints](docs/README.md)
-- [CLI contract](docs/03-cli-contract.md)
-- [Play Console setup](docs/04-play-console-setup.md)
-- [Errors and exit codes](docs/05-errors.md)
-- [Development plan](TODO.md)
-- [Project rules](AGENTS.md)
+- [Documentation index](docs/README.md) — design, architecture and platform constraints.
+- [CLI reference](docs/03-cli-contract.md) — commands, flags, metadata layout and JSON output.
+- [Play Console setup](docs/04-play-console-setup.md) — API access, credentials and permissions.
+- [GitHub Actions](docs/07-github-actions.md) — setup and publish workflows.
+- [Errors and retries](docs/05-errors.md) — exit codes and troubleshooting.
+
+Run `google-play-publisher --help` for commands, or append `--help` to any command for its
+options. Use `--debug` for detailed diagnostics.
 
 ## Development
 
 ```bash
-make build      # bin/google-play-publisher
-make test       # go test ./... and the action script tests
-make lint       # golangci-lint
-make fmt        # gofumpt + go mod tidy
-make snapshot   # goreleaser snapshot
+make build      # Build bin/google-play-publisher.
+make fmt        # Format Go code and tidy dependencies.
+make lint       # Run Go, shell and workflow linters.
+make test       # Run Go tests, action script tests and documentation link checks.
 ```
+
+See the [development plan](TODO.md) and [project rules](AGENTS.md) before contributing.
+
+### Development disclosure
+
+This project is developed with substantial AI assistance from DeepSeek Harness
+(deepseek-flash) and OpenAI Codex, under human direction and review. The maintainer is
+responsible for the architecture, release process and verification.
