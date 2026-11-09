@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"time"
 
+	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/version"
 )
 
@@ -16,4 +18,7 @@ type App struct {
 	Now     func() time.Time
 	Logger  *slog.Logger
 	Version version.Info
+	// NewAPI creates the Play API client. It is injected by main and replaced
+	// with a fake in tests.
+	NewAPI func(ctx context.Context, opts play.Options) (play.API, error)
 }

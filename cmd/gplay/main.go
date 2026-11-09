@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/vyachin/google-play-publisher/internal/cli"
+	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/version"
 )
 
@@ -21,6 +22,9 @@ func main() {
 		Stderr:  os.Stderr,
 		Now:     time.Now,
 		Version: version.New(),
+		NewAPI: func(ctx context.Context, opts play.Options) (play.API, error) {
+			return play.New(ctx, opts)
+		},
 	}
 
 	os.Exit(cli.Execute(ctx, app, os.Args[1:]))

@@ -96,21 +96,20 @@ panic/exit в `main` только в одном месте.
 
 **DoD:** невалидный файл/флаги/локаль отсекаются до создания edit; тесты покрывают границы.
 
-## S4. Команда `publish` — 1.5–2 д
+## S4. Команда `publish` — 1.5–2 д — выполнено (кроме live-прогона)
 
-- [ ] Use-case `internal/app/publish.go`: последовательность
-      `insert → upload → tracks.update → commit`.
-- [ ] Preflight: наличие AAB, версия в треке, `--if-exists=fail|skip`, проверка трека.
-- [ ] `--dry-run`: `validate` + `delete`.
-- [ ] Очистка edit при ошибке и по SIGINT/SIGTERM (короткий контекст).
-- [ ] Коммит: `ERROR_IF_IN_REVIEW` по умолчанию, `--on-in-review=replace`,
+- [x] Use-case `internal/app/publish.go`: `insert → upload → tracks.update → commit`.
+- [x] Preflight: AAB/BundleConfig.pb, метаданные AGP, версия в треке, `--if-exists=fail|skip`, доступ к треку.
+- [x] `--dry-run`: `validate` + удаление edit.
+- [x] Очистка edit при ошибке и отмене контекста (короткий контекст, best effort).
+- [x] Коммит: `ERROR_IF_IN_REVIEW` по умолчанию, `--on-in-review=replace`,
       повтор с `changesNotSentForReview=true` и код 8.
-- [ ] Неоднозначный коммит: проверка релизов до повтора ([02-architecture.md](docs/02-architecture.md#6-идемпотентность-и-восстановление)).
-- [ ] JSON-результат по схеме [03-cli-contract.md](docs/03-cli-contract.md#5-json-результат).
-- [ ] Тесты сценариев сбоев из [02-architecture.md](docs/02-architecture.md#6-идемпотентность-и-восстановление).
+- [x] Неоднозначный коммит: проверка релизов до повтора, повтор только для `Transient`.
+- [x] JSON-результат по схеме [03-cli-contract.md](docs/03-cli-contract.md#5-json-результат).
+- [x] Тесты сценариев сбоев: upload, commit, retry, ambiguous, skip, dry-run.
+- [ ] Live-прогон на тестовом приложении — после настройки доступов (S0).
 
-**DoD:** публикация в `internal` end-to-end; повторный запуск даёт код 5 или no-op при `--if-exists=skip`;
-прерывание не оставляет «висящий» edit; JSON парсится.
+**DoD:** unit/CLI-часть закрыта; публикация на реальном приложении ещё не проверялась.
 
 ## S5. `doctor` и `status` — 1 д
 
