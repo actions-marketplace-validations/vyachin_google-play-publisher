@@ -29,6 +29,7 @@ internal/app/                use cases without cobra and without androidpublishe
 internal/play/               thin wrapper over androidpublisher: interface + client + error mapping
 internal/artifact/           artifact inspection: ZIP signature, output-metadata.json, sha256
 internal/release/            domain: Plan, status/rollout/notes validation, track names
+internal/storemeta/          metadata tree: listings, images, testers, local validation
 internal/retry/              (reserved) backoff policy and error classification
 internal/logging/            slog, debug transport, secret redaction
 internal/exitcode/           typed errors → process exit codes
@@ -89,6 +90,7 @@ sequenceDiagram
     CLI->>API: edits.bundles.upload(editId, aab) [resumable]
     API-->>CLI: versionCode, sha256
     CLI->>API: edits.tracks.update(editId, track, release)
+    CLI->>API: edits.listings.update, images.deleteall/upload, testers.update [--metadata-dir]
     alt dry-run
         CLI->>API: edits.validate(editId)
         CLI->>API: edits.delete(editId)
@@ -164,6 +166,15 @@ release** for the uploaded version code; it does not append to history. `rollout
 version codes, in-app update priority and country targeting survive the update. If an
 integration test shows that the previous `completed` releases must be sent as well, the
 merge can be added in `app` without changing the CLI.
+
+### Store metadata
+
+`--metadata-dir` adds store listings, images and tester groups to the same edit. The tree is
+parsed and validated by `internal/storemeta` before the API client exists: listing lengths,
+image formats and the fixed icon/feature-graphic sizes are local errors (code 2), so a typo
+cannot consume an edit. Within the edit each mentioned image set is cleared with
+`images.deleteall` and then uploaded, which makes the directory authoritative for that type;
+because everything is one edit, a failure leaves Play unchanged.
 
 ### Commit
 

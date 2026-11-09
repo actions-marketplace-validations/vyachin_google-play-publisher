@@ -152,8 +152,8 @@ func resolveStatus(raw string, rollout *float64) (Status, error) {
 func validateNotes(raw map[string]string) ([]Note, error) {
 	notes := make([]Note, 0, len(raw))
 	for locale, text := range raw {
-		if !localePattern.MatchString(locale) {
-			return nil, exitcode.Errorf(exitcode.Usage, "invalid release notes locale %q", locale)
+		if err := ValidateLocale(locale); err != nil {
+			return nil, err
 		}
 
 		text = strings.TrimSpace(text)
@@ -194,6 +194,23 @@ func ParseExistsPolicy(raw string) (ExistsPolicy, error) {
 	}
 }
 
+// ValidateLocale checks a BCP-47 language tag such as "en-US" or "de".
+func ValidateLocale(locale string) error {
+	if !localePattern.MatchString(locale) {
+		return exitcode.Errorf(exitcode.Usage, "invalid locale %q: want a BCP-47 tag such as en-US", locale)
+	}
+	return nil
+}
+
+// ValidateTrackName checks a Play track name, including form-factor prefixes
+// such as "wear:production".
+func ValidateTrackName(track string) error {
+	if !trackPattern.MatchString(track) {
+		return exitcode.Errorf(exitcode.Usage, "invalid track name %q", track)
+	}
+	return nil
+}
+
 // ValidateTarget checks the package and track names and returns the effective
 // track name (empty defaults to "internal"). Commands that do not publish an
 // AAB, such as rollout and promote, validate their target with it before any
@@ -207,8 +224,8 @@ func ValidateTarget(pkg, track string) (string, error) {
 	if effective == "" {
 		effective = "internal"
 	}
-	if !trackPattern.MatchString(effective) {
-		return "", exitcode.Errorf(exitcode.Usage, "invalid track name %q", effective)
+	if err := ValidateTrackName(effective); err != nil {
+		return "", err
 	}
 	return effective, nil
 }

@@ -43,19 +43,20 @@ These are platform limits, not gaps in the tool. Accept them before building fur
    edit id).
 6. Changes an existing rollout without a new upload (`rollout`: fraction, halt, complete) and
    promotes a built version from one track to another (`promote`).
-7. Handles state conflicts safely (invalidated edit, reused version code) and does not wait
+7. Applies store listings, images and tester groups from a metadata directory in the same
+   edit as the AAB (`--metadata-dir`), validating text limits and image sizes locally.
+8. Handles state conflicts safely (invalidated edit, reused version code) and does not wait
    for review: `internal` builds are usually available immediately.
-8. Supports `--debug`: detailed logs of every phase and HTTP exchange on `stderr`, with
+9. Supports `--debug`: detailed logs of every phase and HTTP exchange on `stderr`, with
    secrets redacted.
 
-## Non-goals of the MVP
+## Non-goals
 
-- store listing management (icons, screenshots, descriptions);
-- tester groups and tester lists;
+- the Data safety declaration, device tier configs and other app-level forms;
 - managed publishing ("Publish changes") and the first app publication;
+- creating an app and its legal declarations;
+- APK/OBB artifacts and deobfuscation uploads (an AAB carries the mapping file);
 - signing and building AABs (that is Gradle/bundletool);
-- creating an app and its first publication;
-- APK support (AAB only);
 - a local state database or "smart" migrations — the tool is stateless
   (see [ADR-0002](adr/0002-stateless-single-edit.md)).
 

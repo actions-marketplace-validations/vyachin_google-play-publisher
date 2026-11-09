@@ -16,6 +16,7 @@ import (
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/release"
+	"github.com/vyachin/google-play-publisher/internal/storemeta"
 )
 
 // Review outcomes reported by Publish.
@@ -35,6 +36,7 @@ type PublishOptions struct {
 	AABPath                 string
 	MetadataPath            string
 	ChangelogDir            string
+	MetadataDir             string
 	VersionCode             int64
 	Track                   string
 	Status                  string
@@ -50,6 +52,13 @@ type PublishOptions struct {
 	IncludeRestOfWorld      bool
 }
 
+// MetadataResult counts the store metadata applied with a release.
+type MetadataResult struct {
+	Listings int
+	Images   int
+	Testers  int
+}
+
 // PublishResult describes a completed publish operation.
 type PublishResult struct {
 	Package     string
@@ -60,6 +69,8 @@ type PublishResult struct {
 	EditID      string
 	Review      string
 	VersionName string
+	// Metadata is nil when --metadata-dir was not used.
+	Metadata *MetadataResult
 }
 
 // Publisher runs the publish use case.
@@ -108,6 +119,7 @@ type Prepared struct {
 	plan     release.Plan
 	bundle   *artifact.Bundle
 	metadata *artifact.Metadata
+	store    *storemeta.Metadata
 	state    *preparedState
 }
 
@@ -205,16 +217,33 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 	opts.Package = resolved.Package
 	opts.VersionCode = resolved.VersionCode
 
-	if opts.ChangelogDir != "" && len(opts.Notes) > 0 {
+	if opts.MetadataDir != "" && opts.ChangelogDir != "" {
 		return Prepared{}, exitcode.Errorf(exitcode.Usage,
-			"release notes cannot come from both --changelog-dir and notes passed by a caller")
+			"--metadata-dir and --changelog-dir cannot be combined: --metadata-dir already contains changelogs")
 	}
+	notesDir := opts.ChangelogDir
+	if opts.MetadataDir != "" {
+		notesDir = opts.MetadataDir
+	}
+	if notesDir != "" && len(opts.Notes) > 0 {
+		return Prepared{}, exitcode.Errorf(exitcode.Usage,
+			"release notes cannot come from both a metadata directory and notes passed by a caller")
+	}
+
 	notes := opts.Notes
-	if opts.ChangelogDir != "" {
+	switch {
+	case opts.MetadataDir != "":
+		notes, err = readChangelogDirOptional(opts.MetadataDir, opts.VersionCode)
+	case opts.ChangelogDir != "":
 		notes, err = readChangelogDir(opts.ChangelogDir, opts.VersionCode)
-		if err != nil {
-			return Prepared{}, err
-		}
+	}
+	if err != nil {
+		return Prepared{}, err
+	}
+
+	store, err := storemeta.Read(opts.MetadataDir)
+	if err != nil {
+		return Prepared{}, err
 	}
 
 	plan, err := release.NewPlan(release.Input{
@@ -237,6 +266,7 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 		plan:     plan,
 		bundle:   bundle,
 		metadata: meta,
+		store:    store,
 		state:    &preparedState{valid: true},
 	}, nil
 }
@@ -354,6 +384,11 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 			opts.VersionCode, bundle.VersionCode)
 	}
 
+	applied, err := p.applyMetadata(ctx, plan.Package, editID, prepared.store)
+	if err != nil {
+		return PublishResult{}, err
+	}
+
 	result := PublishResult{
 		Package:     plan.Package,
 		Track:       plan.Track,
@@ -362,6 +397,7 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 		SHA256:      uploadedSHA256(info, bundle),
 		EditID:      editID,
 		VersionName: prepared.bundle.Identity.VersionName,
+		Metadata:    applied,
 	}
 
 	if err := p.api.UpdateTrack(ctx, plan.Package, editID, plan.Track, play.Release{
@@ -439,6 +475,61 @@ type commitResult struct {
 // commitRecoveryBudget bounds the reconciliation read after the operation
 // deadline expired. See docs/05-errors.md §4.
 const commitRecoveryBudget = 15 * time.Second
+
+// applyMetadata writes the store listings, images and testers of a metadata
+// directory into the edit. It returns nil when no directory was supplied.
+func (p *Publisher) applyMetadata(
+	ctx context.Context,
+	pkg, editID string,
+	store *storemeta.Metadata,
+) (*MetadataResult, error) {
+	if store == nil {
+		return nil, nil
+	}
+
+	for _, listing := range store.Listings {
+		if err := p.api.UpdateListing(ctx, pkg, editID, play.Listing{
+			Language:         listing.Language,
+			Title:            listing.Title,
+			ShortDescription: listing.ShortDescription,
+			FullDescription:  listing.FullDescription,
+			Video:            listing.Video,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	images := 0
+	for _, set := range store.Images {
+		if err := p.api.DeleteAllImages(ctx, pkg, editID, set.Language, set.Type); err != nil {
+			return nil, err
+		}
+		for _, path := range set.Files {
+			if err := p.api.UploadImage(ctx, pkg, editID, set.Language, set.Type, path); err != nil {
+				return nil, err
+			}
+			images++
+		}
+	}
+
+	for _, testers := range store.Testers {
+		if err := p.api.UpdateTesters(ctx, pkg, editID, play.Testers{
+			Track:        testers.Track,
+			GoogleGroups: testers.GoogleGroups,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	result := &MetadataResult{
+		Listings: len(store.Listings),
+		Images:   images,
+		Testers:  len(store.Testers),
+	}
+	p.logger.Info("store metadata applied",
+		"listings", result.Listings, "images", result.Images, "testers", result.Testers)
+	return result, nil
+}
 
 // commitSettings are the edits.commit options shared by every command that
 // mutates a track.

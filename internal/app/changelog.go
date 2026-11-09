@@ -21,6 +21,16 @@ import (
 // translation is allowed. When no locale has a file, the error names the
 // paths that were checked.
 func readChangelogDir(dir string, versionCode int64) (map[string]string, error) {
+	return readChangelogs(dir, versionCode, true)
+}
+
+// readChangelogDirOptional is the metadata-directory variant: changelogs are
+// optional there, because the same directory may only carry listings or images.
+func readChangelogDirOptional(dir string, versionCode int64) (map[string]string, error) {
+	return readChangelogs(dir, versionCode, false)
+}
+
+func readChangelogs(dir string, versionCode int64, required bool) (map[string]string, error) {
 	if dir == "" {
 		return nil, nil
 	}
@@ -66,6 +76,10 @@ func readChangelogDir(dir string, versionCode int64) (map[string]string, error) 
 				"check the changelog path",
 			)
 		}
+	}
+
+	if len(notes) == 0 && !required {
+		return nil, nil
 	}
 
 	if len(notes) == 0 {

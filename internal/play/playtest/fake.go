@@ -4,6 +4,7 @@ package playtest
 import (
 	"context"
 	"io"
+	"path/filepath"
 
 	"github.com/vyachin/google-play-publisher/internal/play"
 )
@@ -11,14 +12,18 @@ import (
 // Fake is a recording play.API implementation. Unset functions return
 // sensible defaults, so tests only configure what they exercise.
 type Fake struct {
-	CreateEditFunc    func(ctx context.Context, pkg string) (string, error)
-	DeleteEditFunc    func(ctx context.Context, pkg, editID string) error
-	UploadBundleFunc  func(ctx context.Context, pkg, editID string, r io.Reader, size int64) (play.BundleInfo, error)
-	UpdateTrackFunc   func(ctx context.Context, pkg, editID, track string, rel play.Release) error
-	TrackEditFunc     func(ctx context.Context, pkg, editID, track string) (play.TrackState, error)
-	ValidateEditFunc  func(ctx context.Context, pkg, editID string) error
-	CommitEditFunc    func(ctx context.Context, pkg, editID string, opts play.CommitOptions) error
-	TrackReleasesFunc func(ctx context.Context, pkg, track string) ([]play.ReleaseSummary, error)
+	CreateEditFunc      func(ctx context.Context, pkg string) (string, error)
+	DeleteEditFunc      func(ctx context.Context, pkg, editID string) error
+	UploadBundleFunc    func(ctx context.Context, pkg, editID string, r io.Reader, size int64) (play.BundleInfo, error)
+	UpdateTrackFunc     func(ctx context.Context, pkg, editID, track string, rel play.Release) error
+	TrackEditFunc       func(ctx context.Context, pkg, editID, track string) (play.TrackState, error)
+	UpdateListingFunc   func(ctx context.Context, pkg, editID string, listing play.Listing) error
+	DeleteAllImagesFunc func(ctx context.Context, pkg, editID, language, imageType string) error
+	UploadImageFunc     func(ctx context.Context, pkg, editID, language, imageType, path string) error
+	UpdateTestersFunc   func(ctx context.Context, pkg, editID string, testers play.Testers) error
+	ValidateEditFunc    func(ctx context.Context, pkg, editID string) error
+	CommitEditFunc      func(ctx context.Context, pkg, editID string, opts play.CommitOptions) error
+	TrackReleasesFunc   func(ctx context.Context, pkg, track string) ([]play.ReleaseSummary, error)
 
 	Calls           []string
 	DeletedEditIDs  []string
@@ -27,6 +32,10 @@ type Fake struct {
 	UpdatedReleases []play.Release
 	UpdatedTracks   []string
 	ReadTracks      []string
+	Listings        []play.Listing
+	ClearedImages   []string
+	UploadedImages  []string
+	TesterUpdates   []play.Testers
 }
 
 // CreateEdit records the call and returns "edit-1" by default.
@@ -77,6 +86,46 @@ func (f *Fake) TrackEdit(ctx context.Context, pkg, editID, track string) (play.T
 		return f.TrackEditFunc(ctx, pkg, editID, track)
 	}
 	return play.TrackState{Track: track}, nil
+}
+
+// UpdateListing records the call.
+func (f *Fake) UpdateListing(ctx context.Context, pkg, editID string, listing play.Listing) error {
+	f.Calls = append(f.Calls, "UpdateListing")
+	f.Listings = append(f.Listings, listing)
+	if f.UpdateListingFunc != nil {
+		return f.UpdateListingFunc(ctx, pkg, editID, listing)
+	}
+	return nil
+}
+
+// DeleteAllImages records the call as "language/type".
+func (f *Fake) DeleteAllImages(ctx context.Context, pkg, editID, language, imageType string) error {
+	f.Calls = append(f.Calls, "DeleteAllImages")
+	f.ClearedImages = append(f.ClearedImages, language+"/"+imageType)
+	if f.DeleteAllImagesFunc != nil {
+		return f.DeleteAllImagesFunc(ctx, pkg, editID, language, imageType)
+	}
+	return nil
+}
+
+// UploadImage records the call as "language/type/path".
+func (f *Fake) UploadImage(ctx context.Context, pkg, editID, language, imageType, path string) error {
+	f.Calls = append(f.Calls, "UploadImage")
+	f.UploadedImages = append(f.UploadedImages, language+"/"+imageType+"/"+filepath.Base(path))
+	if f.UploadImageFunc != nil {
+		return f.UploadImageFunc(ctx, pkg, editID, language, imageType, path)
+	}
+	return nil
+}
+
+// UpdateTesters records the call.
+func (f *Fake) UpdateTesters(ctx context.Context, pkg, editID string, testers play.Testers) error {
+	f.Calls = append(f.Calls, "UpdateTesters")
+	f.TesterUpdates = append(f.TesterUpdates, testers)
+	if f.UpdateTestersFunc != nil {
+		return f.UpdateTestersFunc(ctx, pkg, editID, testers)
+	}
+	return nil
 }
 
 // ValidateEdit records the call.

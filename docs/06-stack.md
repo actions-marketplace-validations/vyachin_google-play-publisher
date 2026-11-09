@@ -78,12 +78,15 @@ internal/cli/                  cobra: root + commands (thin)
   status.go                    flags → app.Status
   version.go
 internal/app/                  use cases, without cobra and androidpublisher
-  publish.go                   preflight → insert → upload → track → commit
+  publish.go                   preflight → insert → upload → metadata/track → commit
+  rollout.go                   fraction / halt / complete on an existing release
+  promote.go                   source track → destination track
   doctor.go
   status.go
 internal/play/                 Play API adapter: API interface + implementation
 internal/artifact/             AAB inspection: ZIP, BundleConfig.pb, sha256, metadata
 internal/release/              domain: Plan, status/rollout/notes validation
+internal/storemeta/            metadata tree: listings, images, testers, local validation
 internal/retry/                (reserved) error classification and backoff
 internal/logging/              slog, levels, debug transport, redaction
 internal/exitcode/             typed errors → exit codes

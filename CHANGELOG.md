@@ -22,6 +22,12 @@
   `--changes-not-sent-for-review`, reuse the ambiguous-commit reconciliation and report the
   same JSON envelope as `publish` (`versionCodes`, optional `userFraction`, `from` for
   `promote`).
+- `publish --metadata-dir` applies store listings, images and tester groups in the same edit as
+  the AAB: one commit publishes the bundle and its store presence together. The tree is
+  validated before authentication (title 30 / short 80 / full 4000 characters, PNG or JPEG,
+  icon 512x512, feature graphic 1024x500, 8 MiB per image), image sets and tester files are
+  authoritative, and `--metadata-dir` supplies changelogs for the AAB version code. The JSON
+  result gains a `metadata` object with the applied counts.
 
 ## v0.0.7 — 2026-11-09
 

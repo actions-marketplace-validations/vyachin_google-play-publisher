@@ -13,6 +13,10 @@ type API interface {
 	UploadBundle(ctx context.Context, pkg, editID string, r io.Reader, size int64) (BundleInfo, error)
 	UpdateTrack(ctx context.Context, pkg, editID, track string, rel Release) error
 	TrackEdit(ctx context.Context, pkg, editID, track string) (TrackState, error)
+	UpdateListing(ctx context.Context, pkg, editID string, listing Listing) error
+	DeleteAllImages(ctx context.Context, pkg, editID, language, imageType string) error
+	UploadImage(ctx context.Context, pkg, editID, language, imageType, path string) error
+	UpdateTesters(ctx context.Context, pkg, editID string, testers Testers) error
 	ValidateEdit(ctx context.Context, pkg, editID string) error
 	CommitEdit(ctx context.Context, pkg, editID string, opts CommitOptions) error
 	TrackReleases(ctx context.Context, pkg, track string) ([]ReleaseSummary, error)
@@ -77,6 +81,22 @@ type Release struct {
 type TrackState struct {
 	Track    string
 	Releases []Release
+}
+
+// Listing is one localized store listing.
+type Listing struct {
+	Language         string
+	Title            string
+	ShortDescription string
+	FullDescription  string
+	Video            string
+}
+
+// Testers is the tester configuration of one track. Play accepts Google Groups
+// as email addresses.
+type Testers struct {
+	Track        string
+	GoogleGroups []string
 }
 
 // CommitOptions controls edits.commit.

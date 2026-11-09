@@ -23,6 +23,7 @@ type publishFlags struct {
 	Status                  string
 	Rollout                 float64
 	ChangelogDir            string
+	MetadataDir             string
 	VersionCode             int64
 	ReleaseName             string
 	ChangesNotSentForReview bool
@@ -35,19 +36,27 @@ type publishFlags struct {
 }
 
 type publishOutput struct {
-	SchemaVersion     int    `json:"schemaVersion"`
-	OK                bool   `json:"ok"`
-	Command           string `json:"command"`
-	Package           string `json:"package"`
-	Track             string `json:"track"`
-	Status            string `json:"status"`
-	VersionCode       int64  `json:"versionCode"`
-	SHA256            string `json:"sha256"`
-	VersionName       string `json:"versionName,omitempty"`
-	EditID            string `json:"editId,omitempty"`
-	Review            string `json:"review"`
-	ManagedPublishing string `json:"managedPublishing"`
-	DurationMs        int64  `json:"durationMs"`
+	SchemaVersion     int             `json:"schemaVersion"`
+	OK                bool            `json:"ok"`
+	Command           string          `json:"command"`
+	Package           string          `json:"package"`
+	Track             string          `json:"track"`
+	Status            string          `json:"status"`
+	VersionCode       int64           `json:"versionCode"`
+	SHA256            string          `json:"sha256"`
+	VersionName       string          `json:"versionName,omitempty"`
+	EditID            string          `json:"editId,omitempty"`
+	Review            string          `json:"review"`
+	ManagedPublishing string          `json:"managedPublishing"`
+	Metadata          *metadataOutput `json:"metadata,omitempty"`
+	DurationMs        int64           `json:"durationMs"`
+}
+
+// metadataOutput reports how much store metadata was applied with the release.
+type metadataOutput struct {
+	Listings int `json:"listings"`
+	Images   int `json:"images"`
+	Testers  int `json:"testers"`
 }
 
 func newPublishCmd(a *App, g *globalFlags) *cobra.Command {
@@ -82,6 +91,8 @@ optional assertions. The default track is "internal".`,
 	f.StringVar(&flags.Status, "status", "completed", "release status: draft, inProgress or completed")
 	f.Float64Var(&flags.Rollout, "rollout", 0, "staged rollout fraction between 0 and 1")
 	f.StringVar(&flags.ChangelogDir, "changelog-dir", "", "directory with <locale>/changelogs/<versionCode>.txt release notes")
+	f.StringVar(&flags.MetadataDir, "metadata-dir", "",
+		"Play-style metadata directory: listings, images, testers and changelogs applied in the same edit")
 	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code assertion (default: from the AAB)")
 	f.StringVar(&flags.ReleaseName, "release-name", "", "release name shown in Play Console")
 	f.BoolVar(&flags.ChangesNotSentForReview, "changes-not-sent-for-review", false,
@@ -132,6 +143,7 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		AABPath:                 flags.AAB,
 		MetadataPath:            flags.Metadata,
 		ChangelogDir:            flags.ChangelogDir,
+		MetadataDir:             flags.MetadataDir,
 		VersionCode:             flags.VersionCode,
 		Track:                   flags.Track,
 		Status:                  status,
@@ -239,6 +251,13 @@ func writePublishJSON(w io.Writer, result appcore.PublishResult, duration time.D
 		ManagedPublishing: "unknown",
 		DurationMs:        duration.Milliseconds(),
 	}
+	if result.Metadata != nil {
+		out.Metadata = &metadataOutput{
+			Listings: result.Metadata.Listings,
+			Images:   result.Metadata.Images,
+			Testers:  result.Metadata.Testers,
+		}
+	}
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -249,22 +268,28 @@ func writePublishJSON(w io.Writer, result appcore.PublishResult, duration time.D
 }
 
 func printPublish(w io.Writer, result appcore.PublishResult) error {
+	suffix := ""
+	if result.Metadata != nil {
+		suffix = fmt.Sprintf(" [metadata: %d listings, %d images, %d tester lists]",
+			result.Metadata.Listings, result.Metadata.Images, result.Metadata.Testers)
+	}
+
 	switch result.Review {
 	case appcore.ReviewSkipped:
-		_, err := fmt.Fprintf(w, "skipped: version %d of %s is already on %s\n",
-			result.VersionCode, result.Package, result.Track)
+		_, err := fmt.Fprintf(w, "skipped: version %d of %s is already on %s%s\n",
+			result.VersionCode, result.Package, result.Track, suffix)
 		return err
 	case appcore.ReviewValidated:
-		_, err := fmt.Fprintf(w, "validated %s version %d for %s (dry run, edit %s deleted)\n",
-			result.Package, result.VersionCode, result.Track, result.EditID)
+		_, err := fmt.Fprintf(w, "validated %s version %d for %s (dry run, edit %s deleted)%s\n",
+			result.Package, result.VersionCode, result.Track, result.EditID, suffix)
 		return err
 	case appcore.ReviewNotSent:
-		_, err := fmt.Fprintf(w, "saved %s version %d to %s without sending it for review (edit %s)\n",
-			result.Package, result.VersionCode, result.Track, result.EditID)
+		_, err := fmt.Fprintf(w, "saved %s version %d to %s without sending it for review (edit %s)%s\n",
+			result.Package, result.VersionCode, result.Track, result.EditID, suffix)
 		return err
 	default:
-		_, err := fmt.Fprintf(w, "published %s version %d to %s (%s, review %s)\n",
-			result.Package, result.VersionCode, result.Track, result.Status, result.Review)
+		_, err := fmt.Fprintf(w, "published %s version %d to %s (%s, review %s)%s\n",
+			result.Package, result.VersionCode, result.Track, result.Status, result.Review, suffix)
 		return err
 	}
 }

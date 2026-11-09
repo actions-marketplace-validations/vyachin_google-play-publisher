@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -386,5 +388,72 @@ func (c *Client) progressUpdater(size int64) googleapi.ProgressUpdater {
 		}
 		lastPercent = percent
 		c.logger.Info("upload progress", "bytes", current, "total", size, "percent", percent)
+	}
+}
+
+// UpdateListing replaces the localized store listing of one language.
+func (c *Client) UpdateListing(ctx context.Context, pkg, editID string, listing Listing) error {
+	update := &androidpublisher.Listing{
+		Language:         listing.Language,
+		Title:            listing.Title,
+		ShortDescription: listing.ShortDescription,
+		FullDescription:  listing.FullDescription,
+		Video:            listing.Video,
+	}
+
+	return c.call(ctx, "listings.update", c.retry.attempts, func(ctx context.Context) error {
+		_, err := c.svc.Edits.Listings.Update(pkg, editID, listing.Language, update).Context(ctx).Do()
+		return err
+	})
+}
+
+// DeleteAllImages removes every image of one type for a language. It runs
+// before the images of that type are uploaded, so the metadata directory is
+// authoritative; both happen inside one edit, so a failure leaves Play
+// unchanged.
+func (c *Client) DeleteAllImages(ctx context.Context, pkg, editID, language, imageType string) error {
+	return c.call(ctx, "images.deleteall", c.retry.attempts, func(ctx context.Context) error {
+		_, err := c.svc.Edits.Images.Deleteall(pkg, editID, language, imageType).Context(ctx).Do()
+		return err
+	})
+}
+
+// UploadImage uploads one image file. Uploads are not retried: a repeated
+// upload would add a duplicate image to the edit.
+func (c *Client) UploadImage(ctx context.Context, pkg, editID, language, imageType, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return exitcode.WithHint(exitcode.Wrap(exitcode.Usage, err), "check the image path")
+	}
+	defer func() { _ = file.Close() }()
+
+	call := c.svc.Edits.Images.Upload(pkg, editID, language, imageType).Context(ctx)
+	call.Media(file, googleapi.ContentType(imageContentType(path)))
+
+	if _, err := call.Do(); err != nil {
+		return mapError(err)
+	}
+	return nil
+}
+
+// UpdateTesters replaces the tester list of a track.
+func (c *Client) UpdateTesters(ctx context.Context, pkg, editID string, testers Testers) error {
+	update := &androidpublisher.Testers{GoogleGroups: testers.GoogleGroups}
+
+	return c.call(ctx, "testers.update", c.retry.attempts, func(ctx context.Context) error {
+		_, err := c.svc.Edits.Testers.Update(pkg, editID, testers.Track, update).Context(ctx).Do()
+		return err
+	})
+}
+
+// imageContentType maps an image extension to the upload media type.
+func imageContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	default:
+		return "application/octet-stream"
 	}
 }

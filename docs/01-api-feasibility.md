@@ -102,6 +102,22 @@ Important details:
 - A halted release keeps its `userFraction`; resuming it means sending `inProgress` with the
   same or a larger fraction, which is exactly what `rollout --fraction` does.
 
+### Store metadata in the same edit
+
+Besides tracks, an edit accepts the store presence of the app
+([Edits](https://developers.google.com/android-publisher/edits)):
+
+| Resource | Method | Content |
+| --- | --- | --- |
+| `edits.listings` | `update`, `patch`, `get`, `list`, `delete` | `title`, `shortDescription`, `fullDescription`, `video` for one BCP-47 language |
+| `edits.images` | `upload`, `delete`, `deleteall`, `list` | `appIcon`, `featureGraphic`, `promoGraphic`, `tvBanner` and the screenshot types, per language |
+| `edits.testers` | `update`, `patch`, `get` | `googleGroups[]` for a track |
+
+Limits that shape validation: title 30, short description 80 and full description 4000
+characters; icon 512x512; feature graphic 1024x500; images must be PNG or JPEG. Because an
+edit is a snapshot, listings, images, testers and the AAB are committed together, so the store
+metadata of a release can be versioned in the repository next to the changelogs.
+
 ## 4. Review, submission and managed publishing
 
 `edits.commit` by default **cancels changes that are in review and submits all accumulated

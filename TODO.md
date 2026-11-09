@@ -1,6 +1,6 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11 and S12 are done; S0 (Play
+**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12 and S13 are done; S0 (Play
 Console access) was deferred by agreement, and the former S9 post-MVP list was dropped as
 out of scope. The post-S10 review (R16–R19, I7–I9) is fixed and released, including the
 removal of `--expected-tag` in S11.8; S11.9 fixes the publish action invocation and
@@ -38,6 +38,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S10 | GitHub Actions setup/publish actions and AAB identity | 7.5–12 d | Actions tested without Play access; v0.0.5 released; Gunclub switch done |
 | S11 | Post-S10 review fixes: commit outcomes, doctor identity, action result files | 3.5–6 d | R16–R19 and I7–I9 fixed with tests/docs; v0.0.6 released |
 | S12 | Release fields, `rollout` and `promote` | 1.5–2.5 d | Priority/targeting on publish; track changes without a new upload |
+| S13 | Store metadata in the publish edit | 1.5–2 d | Listings, images and testers committed with the AAB |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -1255,3 +1256,35 @@ and `promote --from/--to` are implemented, documented and covered by tests; `mak
 `make lint`, `make test` and `make test-race` pass.
 **Note:** live verification against a real app remains the S0/I3 item; the new calls are covered
 by fake-API and `httptest` tests only.
+
+## S13. Store metadata in the publish edit — 1.5–2 d — done
+
+**Goal:** publish the store presence of a release together with the AAB, from a versioned
+directory in the repository, instead of leaving listings, screenshots and testers to manual
+Play Console work.
+
+- [x] `internal/storemeta`: reads `<dir>/<locale>/{title,short_description,full_description,
+      video}.txt`, `<dir>/<locale>/images/`, `<dir>/testers/<track>.txt` and validates every
+      input: title/short/full lengths, PNG/JPEG format, 8 MiB per file, icon 512x512, feature
+      graphic 1024x500, Google Group addresses, track and locale names.
+- [x] `play.API` gains `UpdateListing`, `DeleteAllImages`, `UploadImage` and `UpdateTesters`;
+      image uploads are not retried (a retry would duplicate the image).
+- [x] `app.PublishOptions.MetadataDir`: `app.Prepare` reads and validates the tree before the
+      API client exists; `PublishPrepared` applies listings, images (deleteall + upload) and
+      testers inside the same edit, before the commit.
+- [x] `--metadata-dir` also reads release notes from `<locale>/changelogs/<versionCode>.txt`
+      (optional, unlike `--changelog-dir`); combining both flags is a usage error.
+- [x] The JSON result carries `metadata: {listings, images, testers}`; the human result shows
+      the same counts.
+- [x] Tests: `storemeta` table tests with generated PNGs, `app` use cases with the fake API
+      (ordering before commit, cleanup on failure, notes from the metadata directory), CLI
+      JSON/text/conflict tests, and client tests for all four calls.
+- [x] Documentation: [03-cli-contract.md](docs/03-cli-contract.md),
+      [02-architecture.md](docs/02-architecture.md),
+      [01-api-feasibility.md](docs/01-api-feasibility.md), README and CHANGELOG.
+
+**DoD:** `publish --metadata-dir` publishes the AAB, listings, images and testers in one edit;
+invalid metadata fails with code 2 before any API call; the local gate is green.
+**Note:** live verification against a real app remains the S0/I3 item; image replacement
+semantics (`deleteall` + upload) are covered by fake-API tests and documented for the first
+live run.

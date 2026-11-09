@@ -76,6 +76,38 @@ legacy cross-check. Locales without a file for that version code are skipped; wh
 exists at all, the command fails with exit code 2 and the path it checked. `--release-name`
 is optional; when it is empty, Play generates the name from the AAB version name.
 
+## Store metadata
+
+`--metadata-dir` applies store listings, images and tester groups in the same edit as the AAB,
+so one commit publishes the bundle and its store presence together:
+
+```
+metadata/
+  en-US/
+    title.txt                # <= 30 characters
+    short_description.txt    # <= 80 characters
+    full_description.txt     # <= 4000 characters
+    video.txt                # optional
+    images/
+      icon.png               # 512x512
+      featureGraphic.png     # 1024x500
+      phoneScreenshots/01.png
+    changelogs/42.txt        # release notes, same as --changelog-dir
+  testers/
+    internal.txt             # one Google Group per line
+```
+
+```bash
+google-play-publisher publish -f app-release.aab -t internal --metadata-dir metadata
+```
+
+The image sets and tester files that are present are authoritative: screenshots removed from a
+directory are removed from Play when the edit commits, and an empty screenshot directory clears
+that type. Every listing, image and tester file is validated before the API client is created
+(text limits, PNG/JPEG, icon 512x512, feature graphic 1024x500, 8 MiB per file), so a typo fails
+with exit code 2 instead of consuming an edit. `--metadata-dir` and `--changelog-dir` cannot be
+combined; the metadata directory already contains `changelogs/`.
+
 ## Staged rollouts and promotion
 
 `rollout` changes a release that is already on a track without uploading a bundle:

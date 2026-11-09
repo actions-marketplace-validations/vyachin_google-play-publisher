@@ -70,6 +70,7 @@ google-play-publisher publish --package com.example.app \
 | `--status` | enum | `completed` | `completed` \| `draft` \| `inProgress` (`inProgress` requires `--rollout`) |
 | `--rollout` | float | `0` | User fraction, `0 < f < 1`; implies `inProgress` when `--status` is omitted |
 | `--changelog-dir` | path | — | Play-style metadata directory: reads `<DIR>/<locale>/changelogs/<AAB versionCode>.txt` |
+| `--metadata-dir` | path | — | Full metadata tree: listings, images, testers and changelogs applied in the same edit |
 | `--version-code` | int | from the AAB | Optional assertion checked against the AAB and the upload; selects changelogs together with `--changelog-dir` |
 | `--release-name` | string | — | Release name stored in Play; empty lets Play generate it from the AAB version name |
 | `--changes-not-sent-for-review` | bool | `false` | Save changes without submitting them for review |
@@ -113,6 +114,7 @@ Combination validation (exit code 2 on violation):
 - `--package` different from the AAB package → error;
 - `--metadata` values different from the AAB values → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error;
+- `--metadata-dir` together with `--changelog-dir` → error;
 - `--in-app-update-priority` outside `0..5` → error;
 - `--country` that is not a two-letter CLDR code, or `--include-rest-of-world` without
   `--country` → error;
@@ -130,14 +132,72 @@ after validation keeps the edit (no delete request is sent) and returns 130; the
 not reported as successful.
 
 `--dry-run` is not "do nothing": the AAB is actually uploaded, the edit is validated and then
-deleted. It consumes traffic, creates an edit (daily quota) and the uploaded `versionCode`
-may stay used even after the edit is deleted. Never dry-run the version code reserved for a
-release. The output states this explicitly.
+deleted. With `--metadata-dir` the listings, images and testers are applied to the edit before
+validation as well, so a dry run exercises the same requests as a real release. It consumes
+traffic, creates an edit (daily quota) and the uploaded `versionCode` may stay used even after
+the edit is deleted. Never dry-run the version code reserved for a release. The output states
+this explicitly.
 
 Local validation (AAB and manifest identity, package, track, status, rollout, notes, metadata
 and policy options) happens before the API client is created, so invalid input returns code 2
 even when credentials are unavailable. The AAB is opened once; the inspected bytes are the
 bytes uploaded.
+
+### `publish --metadata-dir` — store metadata in the same edit
+
+`--metadata-dir DIR` reads a Play-style metadata tree and applies store listings, images and
+tester groups **in the same edit as the AAB**, so one commit publishes the bundle and the
+metadata together:
+
+```
+metadata/
+  en-US/
+    title.txt                 # <= 30 characters
+    short_description.txt     # <= 80 characters
+    full_description.txt      # <= 4000 characters
+    video.txt                 # optional http(s) URL
+    images/
+      icon.png                # 512x512
+      featureGraphic.png      # 1024x500
+      promoGraphic.png
+      tvBanner.png
+      phoneScreenshots/01.png # <= 8 MiB per file
+      sevenInchScreenshots/...
+      tenInchScreenshots/...
+      tvScreenshots/...
+      wearScreenshots/...
+    changelogs/42.txt         # release notes, same layout as --changelog-dir
+  testers/
+    internal.txt              # one Google Group per line
+    beta.txt
+```
+
+Rules:
+
+- a locale directory that contains any listing file must contain `title.txt`,
+  `short_description.txt` and `full_description.txt`; a partial listing cannot silently erase a
+  description;
+- every image set mentioned in the tree is authoritative: the tool deletes all images of that
+  type for that language and uploads the files it found, so removing a screenshot from the
+  directory removes it from Play when the edit commits. An empty screenshot directory removes
+  every image of that type;
+- images must be readable PNG or JPEG. The icon must be 512x512 and the feature graphic
+  1024x500; each file is limited to 8 MiB. Play still validates the content and rejects a bad
+  image with code 7;
+- tester files are `<track>.txt` with one Google Group address per line; blank lines and lines
+  starting with `#` are ignored;
+- `--metadata-dir` also supplies release notes from `<locale>/changelogs/<versionCode>.txt`.
+  Changelogs are optional there, unlike `--changelog-dir`, which fails when no locale has one;
+- `--metadata-dir` and `--changelog-dir` cannot be combined (code 2);
+- the whole tree is validated before the API client is created: a malformed listing, image or
+  tester file returns code 2 and no edit is opened.
+
+All metadata calls happen inside the same edit as the upload, so the commit is atomic: if a
+listing, image or tester update fails, the edit is deleted and Play keeps the previous metadata.
+
+```
+google-play-publisher publish -f app-release.aab -t internal --metadata-dir metadata
+```
 
 ### `google-play-publisher doctor` — MVP
 
@@ -317,6 +377,7 @@ Fields:
 | `schemaVersion` | `1`; bumped on a backwards-incompatible JSON change |
 | `versionName` | AAB `android:versionName`, omitted when the manifest has none |
 | `review` | `sent` \| `notSent` \| `replaced` \| `skipped` \| `validated` |
+| `metadata` | present only with `--metadata-dir`: `{listings, images, testers}` counts of what was applied |
 | `managedPublishing` | `unknown` — the API does not expose the flag; not applicable to `internal` |
 | `error.code` | stable machine-readable identifier, see the table below |
 | `error.exitCode` | mirrors the process exit code for parsers |
