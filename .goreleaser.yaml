@@ -38,8 +38,8 @@ checksum:
 
 release:
   header: |
-    **Fixed:** stricter local validation, safer debug redaction, context-aware token
-    acquisition and clearer `--json` failure diagnostics. No breaking CLI changes.
+    **Fixed:** AAB uploads declare `application/octet-stream`; content sniffing classified the
+    ZIP-based bundle as `application/zip` and Play rejected it with HTTP 400. No other changes.
 
 changelog:
   sort: asc

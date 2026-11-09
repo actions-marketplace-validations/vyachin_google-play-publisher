@@ -1,6 +1,6 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.3 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
+**Status:** v0.0.4 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
 by agreement; S9 is post-MVP. S10 (GitHub Actions usability) is analyzed and planned as
 S10.0–S10.6; S10.0 (design) is done.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a

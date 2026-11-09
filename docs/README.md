@@ -1,6 +1,6 @@
 # google-play-publisher — publishing signed AABs to Google Play
 
-**Status:** implemented as v0.0.3. The executable is `google-play-publisher`.
+**Status:** implemented as v0.0.4. The executable is `google-play-publisher`.
 
 ## Short answer
 
