@@ -37,6 +37,16 @@
   authoritative, and `--metadata-dir` supplies changelogs for the AAB version code. The JSON
   result gains a `metadata` object with the applied counts.
 
+### Changed
+
+- `--metadata-dir` is now the only metadata flag for `publish` and `promote`. It accepts a
+  full tree or a changelog-only tree, so `--changelog-dir` was removed from the CLI
+  (breaking change). The publish action adds a `metadata-dir` input; its old `changelog-dir`
+  input remains as a deprecated alias.
+- `promote --metadata-dir` applies listings, images and testers as well as changelogs in the
+  promotion edit. Changelogs are read only together with `--version-code`; the JSON result
+  gains the `metadata` counts when the flag is used.
+
 ### Fixed
 
 - The Play image type for the app icon was spelled `appIcon`, but `edits.images` expects

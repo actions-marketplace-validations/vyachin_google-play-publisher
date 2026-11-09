@@ -103,9 +103,9 @@ External sources the project relies on:
 
 ## Remaining questions
 
-1. **Release notes format.** Resolved in v0.0.2: notes come only from `--changelog-dir` with
-   the Play/fastlane layout `<locale>/changelogs/<versionCode>.txt`; the JSON variant was
-   removed as a breaking CLI change.
+1. **Release notes format.** Resolved in v0.0.2 and consolidated later: notes come from
+   `--metadata-dir` with the Play/fastlane layout `<locale>/changelogs/<versionCode>.txt`;
+   the JSON variant was removed as a breaking CLI change.
 2. **Do we need `promote`/`rollout`** in the next iteration, or is `publish` to `internal`
    enough?
 3. **Other tracks.** Managed publishing does not matter for `internal`; if `beta`/`production`

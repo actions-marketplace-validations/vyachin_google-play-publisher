@@ -72,7 +72,7 @@ jobs:
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
-          changelog-dir: android/metadata
+          metadata-dir: android/metadata
 
       - name: Assert the action outputs
         run: |

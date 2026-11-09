@@ -409,13 +409,13 @@ func TestPublishRejectsReleaseNotesFlag(t *testing.T) {
 	}
 }
 
-func TestPublishChangelogDirUsesAABVersionCode(t *testing.T) {
+func TestPublishMetadataDirUsesAABVersionCode(t *testing.T) {
 	root := t.TempDir()
 	writeChangelog(t, root, "en-US", 42, "Bug fixes")
 
 	fake := &playtest.Fake{}
 	_, errOut, code := runWithAPI(t, fake, "publish",
-		"-p", "com.example.app", "-f", writeAAB(t), "--changelog-dir", root)
+		"-p", "com.example.app", "-f", writeAAB(t), "--metadata-dir", root)
 
 	if code != int(exitcode.OK) {
 		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.OK, errOut)
@@ -433,17 +433,17 @@ func TestPublishMissingChangelog(t *testing.T) {
 
 	_, errOut, code := runWithAPI(t, &playtest.Fake{}, "publish",
 		"-p", "com.example.app", "-f", writeAAB(t),
-		"--changelog-dir", root, "--version-code", "42")
+		"--metadata-dir", root, "--version-code", "42")
 
 	if code != int(exitcode.Usage) {
 		t.Fatalf("code = %d, want %d", code, exitcode.Usage)
 	}
-	if !strings.Contains(errOut, "no changelog for versionCode 42") || !strings.Contains(errOut, "42.txt") {
+	if !strings.Contains(errOut, "no store metadata or changelog for versionCode 42") || !strings.Contains(errOut, "42.txt") {
 		t.Fatalf("unexpected stderr: %q", errOut)
 	}
 }
 
-func TestPublishChangelogNotes(t *testing.T) {
+func TestPublishMetadataChangelogNotes(t *testing.T) {
 	root := t.TempDir()
 	writeChangelog(t, root, "ru-RU", 42, "Исправления ошибок")
 	writeChangelog(t, root, "en-US", 42, "Bug fixes")
@@ -451,7 +451,7 @@ func TestPublishChangelogNotes(t *testing.T) {
 	fake := &playtest.Fake{}
 	_, errOut, code := runWithAPI(t, fake, "publish",
 		"-p", "com.example.app", "-f", writeAAB(t),
-		"--changelog-dir", root, "--version-code", "42")
+		"--metadata-dir", root, "--version-code", "42")
 
 	if code != int(exitcode.OK) {
 		t.Fatalf("code = %d, want %d, stderr: %q", code, exitcode.OK, errOut)
@@ -484,7 +484,7 @@ func TestPublishVersionCodeMismatch(t *testing.T) {
 
 	_, errOut, code := runWithAPI(t, fake, "publish",
 		"-p", "com.example.app", "-f", writeAAB(t),
-		"--changelog-dir", root, "--version-code", "42")
+		"--metadata-dir", root, "--version-code", "42")
 
 	if code != int(exitcode.Usage) {
 		t.Fatalf("code = %d, want %d", code, exitcode.Usage)

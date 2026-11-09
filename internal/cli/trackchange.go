@@ -16,18 +16,19 @@ import (
 // commands change a track without uploading a bundle, so they report the same
 // fields; promote additionally fills From.
 type trackChangeJSON struct {
-	SchemaVersion int     `json:"schemaVersion"`
-	OK            bool    `json:"ok"`
-	Command       string  `json:"command"`
-	Package       string  `json:"package"`
-	From          string  `json:"from,omitempty"`
-	Track         string  `json:"track"`
-	Status        string  `json:"status"`
-	VersionCodes  []int64 `json:"versionCodes"`
-	UserFraction  float64 `json:"userFraction,omitempty"`
-	EditID        string  `json:"editId,omitempty"`
-	Review        string  `json:"review"`
-	DurationMs    int64   `json:"durationMs"`
+	SchemaVersion int             `json:"schemaVersion"`
+	OK            bool            `json:"ok"`
+	Command       string          `json:"command"`
+	Package       string          `json:"package"`
+	From          string          `json:"from,omitempty"`
+	Track         string          `json:"track"`
+	Status        string          `json:"status"`
+	VersionCodes  []int64         `json:"versionCodes"`
+	UserFraction  float64         `json:"userFraction,omitempty"`
+	EditID        string          `json:"editId,omitempty"`
+	Review        string          `json:"review"`
+	Metadata      *metadataOutput `json:"metadata,omitempty"`
+	DurationMs    int64           `json:"durationMs"`
 }
 
 func writeTrackChangeJSON(w io.Writer, out trackChangeJSON, duration time.Duration) error {

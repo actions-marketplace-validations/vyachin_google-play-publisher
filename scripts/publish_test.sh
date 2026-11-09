@@ -112,7 +112,7 @@ common_env
 reset
 run_publish "${COMMON[@]}" \
 	STUB_JSON="$success_json" \
-	GPP_CHANGELOG_DIR="meta data" \
+	GPP_METADATA_DIR="meta data" \
 	GPP_VERSION_CODE=42 \
 	GPP_RELEASE_NAME=1.0.42 \
 	GPP_IF_EXISTS=skip \
@@ -128,7 +128,8 @@ expect_ok "publishes with the documented inputs"
 [ "$(head -n 1 "${WORK}/stub_args")" = "publish" ] && ok "calls the publish command" || not_ok "calls the publish command"
 grep -qF -- "--json" "${WORK}/stub_args" && ok "runs the CLI with --json" || not_ok "runs the CLI with --json"
 grep -qF -- "${WORK}/workspace/app dir/app release.aab" "${WORK}/stub_args" && ok "resolves the AAB path against GITHUB_WORKSPACE" || not_ok "resolves the AAB path against GITHUB_WORKSPACE"
-grep -qF -- "${WORK}/workspace/meta data" "${WORK}/stub_args" && ok "resolves the changelog path against GITHUB_WORKSPACE" || not_ok "resolves the changelog path against GITHUB_WORKSPACE"
+grep -qF -- "--metadata-dir" "${WORK}/stub_args" && ok "forwards metadata-dir" || not_ok "forwards metadata-dir"
+grep -qF -- "${WORK}/workspace/meta data" "${WORK}/stub_args" && ok "resolves the metadata path against GITHUB_WORKSPACE" || not_ok "resolves the metadata path against GITHUB_WORKSPACE"
 grep -qF -- "--debug" "${WORK}/stub_args" && ok "forwards debug" || not_ok "forwards debug"
 grep -qF "Google Play publish" "${WORK}/summary" && ok "writes the Job Summary" || not_ok "writes the Job Summary"
 
@@ -151,6 +152,21 @@ second_dir="$(dirname "$second_result")"
 [ -f "$first_result" ] && grep -qF '"review":"sent"' "$first_result" && ok "preserves the earlier result payload" || not_ok "preserves the earlier result payload"
 [ -f "$second_result" ] && grep -qF '"review":"skipped"' "$second_result" && ok "writes the current result payload" || not_ok "writes the current result payload"
 rm -rf "$first_dir" "$second_dir"
+
+# Deprecated changelog-dir input maps to metadata-dir.
+reset
+run_publish "${COMMON[@]}" STUB_JSON="$success_json" GPP_CHANGELOG_DIR="meta data"
+expect_ok "accepts the deprecated changelog-dir input"
+grep -qF -- "--metadata-dir" "${WORK}/stub_args" && ok "maps changelog-dir to metadata-dir" || not_ok "maps changelog-dir to metadata-dir"
+grep -qF -- "--changelog-dir" "${WORK}/stub_args" && not_ok "does not pass the removed flag" || ok "does not pass the removed flag"
+
+# Both metadata inputs are rejected.
+reset
+run_publish "${COMMON[@]}" STUB_JSON="$success_json" \
+	GPP_METADATA_DIR="meta data" \
+	GPP_CHANGELOG_DIR="meta data"
+expect_status 1 "rejects both metadata inputs"
+expect_err_contains "mutually exclusive" "explains the metadata input conflict"
 
 # Manual review action: exit code 8 must be preserved.
 manual_json="${WORK}/manual.json"

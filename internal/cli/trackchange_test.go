@@ -146,6 +146,25 @@ func TestPromoteJSON(t *testing.T) {
 	}
 }
 
+func TestPromoteJSONWithMetadata(t *testing.T) {
+	fake := &playtest.Fake{TrackEditFunc: promoteSource}
+
+	out, errOut, code := runWithAPI(t, fake, "promote", "-p", "com.example.app",
+		"--from", "internal", "--to", "beta", "--metadata-dir", writeMetadataTree(t), "--json")
+	if code != int(exitcode.OK) {
+		t.Fatalf("code = %d, want 0: %s", code, errOut)
+	}
+
+	got := decodeSingleObject(t, out)
+	metadata, ok := got["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata = %#v, want an object", got["metadata"])
+	}
+	if metadata["listings"] != float64(1) || metadata["testers"] != float64(1) {
+		t.Fatalf("metadata = %v", metadata)
+	}
+}
+
 func TestPromoteProductionRequiresYes(t *testing.T) {
 	fake := &playtest.Fake{TrackEditFunc: promoteSource}
 

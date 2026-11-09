@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -53,18 +52,9 @@ func TestReadChangelogDirMissing(t *testing.T) {
 		t.Fatalf("create changelog dir: %v", err)
 	}
 
-	_, err := readChangelogDir(root, 42)
-
-	if exitcode.From(err) != exitcode.Usage {
-		t.Fatalf("code = %d, want %d (err: %v)", exitcode.From(err), exitcode.Usage, err)
-	}
-	if !strings.Contains(err.Error(), "no changelog for versionCode 42") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var coded *exitcode.Error
-	if !errors.As(err, &coded) || !strings.Contains(coded.Hint, "42.txt") {
-		t.Fatalf("hint does not name the expected file: %v", err)
+	notes, err := readChangelogDir(root, 42)
+	if err != nil || notes != nil {
+		t.Fatalf("notes = %#v, err = %v; want nil, nil", notes, err)
 	}
 }
 

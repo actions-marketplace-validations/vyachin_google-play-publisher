@@ -90,7 +90,7 @@ wrapper around the CLI: input validation, Play calls, retries and exit codes sta
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
-    changelog-dir: android/metadata
+    metadata-dir: android/metadata
     credentials-file: ${{ runner.temp }}/sa.json
 ```
 
@@ -102,7 +102,8 @@ Inputs:
 | `package` | yes | — | `applicationId` in Play Console |
 | `aab` | yes | — | Path to the signed AAB |
 | `track` | no | `internal` | Release track |
-| `changelog-dir` | no | — | Play-style metadata directory with `<locale>/changelogs/<versionCode>.txt` |
+| `metadata-dir` | no | — | Play-style metadata tree with listings, images, testers and `<locale>/changelogs/<versionCode>.txt`; a changelog-only tree is accepted |
+| `changelog-dir` | no | — | Deprecated alias for `metadata-dir`; kept for existing workflows |
 | `version-code` | no | AAB | Optional assertion checked against the AAB and upload; used for changelog lookup |
 | `release-name` | no | — | Release name; empty lets Play generate it from the AAB version name |
 | `if-exists` | no | `fail` | `fail` or `skip` when the version code is already on the track |
@@ -134,7 +135,7 @@ Behavior:
   does not change action input paths;
 - inputs are passed as quoted CLI arguments, never interpolated into shell source;
 - the AAB manifest supplies `package` and `versionCode`; `package` and `version-code` remain
-  optional assertions, and `changelog-dir` uses the AAB version code;
+  optional assertions, and `metadata-dir` uses the AAB version code;
 - base64 credentials are decoded into a `umask 077` temporary file under `$RUNNER_TEMP`,
   masked in the log, and removed after success or failure;
 - the CLI runs once with `--json`; stderr is forwarded to the job log, the JSON result is
@@ -210,7 +211,7 @@ jobs:
           google-play-publisher publish \
             --aab android/app/build/outputs/bundle/release/app-release.aab \
             --track internal \
-            --changelog-dir android/metadata \
+            --metadata-dir android/metadata \
             --credentials "$RUNNER_TEMP/sa.json" \
             --json > publish.json
 
@@ -271,7 +272,7 @@ jobs:
           package: com.example.app
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
-          changelog-dir: android/metadata
+          metadata-dir: android/metadata
           credentials-file: ${{ runner.temp }}/sa.json
 
       - name: Show the result
@@ -311,7 +312,7 @@ ephemeral runners or a secret store, and do not write keys to a path that surviv
 
 ## Path semantics
 
-- `aab`, `changelog-dir` and `credentials-file` are resolved against `GITHUB_WORKSPACE` when
+- `aab`, `metadata-dir` and `credentials-file` are resolved against `GITHUB_WORKSPACE` when
   they are relative; absolute paths are used as-is.
 - `defaults.run.working-directory` applies to `run` steps only and does not change action input
   paths. For a project in `android/`, pass `android/app/...` and `android/metadata`.

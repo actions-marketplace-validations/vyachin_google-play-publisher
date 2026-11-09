@@ -136,11 +136,29 @@ func TestPublishReadsNotesFromMetadataDir(t *testing.T) {
 	}
 }
 
-func TestPublishRejectsMetadataAndChangelogDirs(t *testing.T) {
+func TestPublishAcceptsChangelogOnlyMetadataDir(t *testing.T) {
 	fake := &playtest.Fake{}
 	opts := baseOptions(writeAAB(t))
-	opts.MetadataDir = writeListingDir(t)
-	opts.ChangelogDir = t.TempDir()
+	dir := t.TempDir()
+	writeMetadataFile(t, filepath.Join(dir, "en-US", "changelogs", "42.txt"), "Changelog only")
+	opts.MetadataDir = dir
+
+	if _, err := app.NewPublisher(fake, nil).Publish(context.Background(), opts); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	notes := fake.UpdatedReleases[0].ReleaseNotes
+	if len(notes) != 1 || notes[0].Text != "Changelog only" {
+		t.Fatalf("notes = %+v, want the changelog-only note", notes)
+	}
+	if len(fake.Listings) != 0 {
+		t.Fatalf("listings = %+v, want none", fake.Listings)
+	}
+}
+
+func TestPublishRejectsEmptyMetadataDir(t *testing.T) {
+	fake := &playtest.Fake{}
+	opts := baseOptions(writeAAB(t))
+	opts.MetadataDir = t.TempDir()
 
 	_, err := app.NewPublisher(fake, nil).Publish(context.Background(), opts)
 	if code := exitcode.From(err); code != exitcode.Usage {

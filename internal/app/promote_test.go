@@ -163,15 +163,15 @@ func TestPromoteStagedProductionRollout(t *testing.T) {
 	fake := trackSet(map[string]play.TrackState{"beta": internalTrack()})
 
 	result, err := app.NewPublisher(fake, nil).Promote(context.Background(), app.PromoteOptions{
-		Package:      "com.example.app",
-		From:         "beta",
-		To:           "production",
-		VersionCode:  42,
-		Rollout:      fraction(0.1),
-		ChangelogDir: changelogDir,
-		Confirm:      true,
-		Countries:    []string{"fr", "de"},
-		ReleaseName:  "1.0.42",
+		Package:     "com.example.app",
+		From:        "beta",
+		To:          "production",
+		VersionCode: 42,
+		Rollout:     fraction(0.1),
+		MetadataDir: changelogDir,
+		Confirm:     true,
+		Countries:   []string{"fr", "de"},
+		ReleaseName: "1.0.42",
 	})
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
@@ -190,6 +190,32 @@ func TestPromoteStagedProductionRollout(t *testing.T) {
 	}
 	if result.Status != "inProgress" {
 		t.Errorf("result status = %q, want inProgress", result.Status)
+	}
+}
+
+func TestPromoteAppliesMetadata(t *testing.T) {
+	fake := trackSet(map[string]play.TrackState{"beta": internalTrack()})
+	dir := writeListingDir(t)
+
+	result, err := app.NewPublisher(fake, nil).Promote(context.Background(), app.PromoteOptions{
+		Package:     "com.example.app",
+		From:        "beta",
+		To:          "production",
+		MetadataDir: dir,
+		Confirm:     true,
+	})
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+
+	if result.Metadata == nil || result.Metadata.Listings != 1 || result.Metadata.Testers != 1 {
+		t.Fatalf("metadata result = %+v", result.Metadata)
+	}
+	if len(fake.Listings) != 1 || fake.Listings[0].Language != "en-US" {
+		t.Fatalf("listings = %+v", fake.Listings)
+	}
+	if len(fake.TesterUpdates) != 1 || fake.TesterUpdates[0].Track != "internal" {
+		t.Fatalf("tester updates = %+v", fake.TesterUpdates)
 	}
 }
 
@@ -234,11 +260,11 @@ func TestPreparePromoteRejectsBadInput(t *testing.T) {
 			want: "different tracks",
 		},
 		{
-			name: "changelog without version code",
+			name: "empty metadata directory without version code",
 			opts: app.PromoteOptions{
-				Package: "com.example.app", From: "internal", To: "beta", ChangelogDir: "metadata",
+				Package: "com.example.app", From: "internal", To: "beta", MetadataDir: t.TempDir(),
 			},
-			want: "--changelog-dir requires --version-code",
+			want: "no store metadata found",
 		},
 		{
 			name: "dry run with a saved change",

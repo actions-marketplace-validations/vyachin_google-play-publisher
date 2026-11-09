@@ -1,12 +1,13 @@
 # TODO — development plan for `google-play-publisher`
 
 **Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11, S12, S13 and the unplanned
-S14 (metadata pull) are done; S0 (Play Console access) was deferred by agreement, and the
-former S9 post-MVP list was dropped as out of scope. The post-S10 review (R16–R19, I7–I9) is
-fixed and released, including the removal of `--expected-tag` in S11.8; S11.9 fixes the
-publish action invocation and supersedes v0.0.6. The Gunclub workflow switch is done in that repository, and the live
-publish/upload runs succeeded against a real app; the remaining open items are the S0
-configuration checklist and the I3 evidence update.
+S14 (metadata pull) and S15 (single metadata flag) are done; S0 (Play Console access) was
+deferred by agreement, and the former S9 post-MVP list was dropped as out of scope. The
+post-S10 review (R16–R19, I7–I9) is fixed and released, including the removal of
+`--expected-tag` in S11.8; S11.9 fixes the publish action invocation and supersedes v0.0.6.
+The Gunclub workflow switch is done in that repository, and the live publish/upload runs
+succeeded against a real app; the remaining open items are the S0 configuration checklist and
+the I3 evidence update.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -40,6 +41,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S12 | Release fields, `rollout` and `promote` | 1.5–2.5 d | Priority/targeting on publish; track changes without a new upload |
 | S13 | Store metadata in the publish edit | 1.5–2 d | Listings, images and testers committed with the AAB |
 | S14 | `pull`: recreate the metadata tree from Play | 1–1.5 d | A pulled tree round-trips through `publish --metadata-dir` |
+| S15 | Consolidate metadata flags on `--metadata-dir` | 0.5 d | One metadata flag; `promote` applies the full tree |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -1322,3 +1324,25 @@ be adopted incrementally.
 leaves the target untouched; the local gate is green.
 **Note:** live verification against a real app remains the S0/I3 item; the read calls and image
 downloads are covered by fake-API and `httptest` tests only.
+
+## S15. Consolidate metadata flags on `--metadata-dir` — 0.5 d — done [unplanned]
+
+**Goal:** remove the `--changelog-dir`/`--metadata-dir` split and make the full metadata tree
+the single input for store presence, listings, images, testers and release notes.
+
+- [x] `storemeta.Read` accepts a changelog-only (or empty) tree and returns no store metadata;
+      `publish` rejects a metadata directory with neither store metadata nor a changelog for
+      the AAB version code.
+- [x] `publish`: remove `--changelog-dir`, `PublishOptions.ChangelogDir` and the
+      metadata/changelog conflict checks. Release notes come from `--metadata-dir`.
+- [x] `promote`: replace `--changelog-dir` with `--metadata-dir`; apply listings, images and
+      testers in the promotion edit and read changelogs only with `--version-code`; the JSON
+      result reports `metadata` counts.
+- [x] Publish action: add `metadata-dir`; keep `changelog-dir` as a deprecated alias that maps
+      to `--metadata-dir`; reject both inputs together.
+- [x] Tests: changelog-only metadata directories, removed publish conflict, promote metadata
+      application, action alias/mutual exclusion, CLI JSON/text results.
+- [x] Documentation: CLI contract, README, GitHub Actions, architecture and CHANGELOG.
+
+**DoD:** one CLI metadata flag; `publish` and `promote` accept a full tree or a changelog-only
+tree; the action supports the new input with a deprecated alias; the local gate is green.

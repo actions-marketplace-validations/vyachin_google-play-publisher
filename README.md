@@ -56,8 +56,8 @@ google-play-publisher --json publish -p com.example.app -f app-release.aab > pub
 
 ## Release notes
 
-Release notes come from a Play-style metadata directory: one file per locale named after the
-`versionCode`.
+Release notes live in the same metadata tree as listings and images: one file per locale named
+after the `versionCode`. A changelog-only tree is valid.
 
 ```
 metadata/
@@ -67,14 +67,15 @@ metadata/
 
 ```bash
 google-play-publisher publish -f app-release.aab \
-  --changelog-dir metadata --release-name 1.0.42
+  --metadata-dir metadata --release-name 1.0.42
 ```
 
-The AAB version code selects the changelog files, so `--version-code` is no longer required;
-when supplied it is checked against the AAB and the upload. `--metadata` remains an optional
-legacy cross-check. Locales without a file for that version code are skipped; when no file
-exists at all, the command fails with exit code 2 and the path it checked. `--release-name`
-is optional; when it is empty, Play generates the name from the AAB version name.
+The AAB version code selects the changelog files, so `--version-code` is not required; when
+supplied it is checked against the AAB and the upload. `--metadata` remains an optional legacy
+cross-check. Locales without a file for that version code are skipped; when the directory
+contains neither store metadata nor a changelog for the AAB version code, the command fails
+with exit code 2 before any edit is created. `--release-name` is optional; when it is empty,
+Play generates the name from the AAB version name.
 
 ## Store metadata
 
@@ -92,7 +93,7 @@ metadata/
       icon.png               # 512x512
       featureGraphic.png     # 1024x500
       phoneScreenshots/001.png
-    changelogs/42.txt        # release notes, same as --changelog-dir
+    changelogs/42.txt        # release notes
   testers/
     internal.txt             # one Google Group per line
 ```
@@ -105,8 +106,8 @@ The image sets and tester files that are present are authoritative: screenshots 
 directory are removed from Play when the edit commits, and an empty screenshot directory clears
 that type. Every listing, image and tester file is validated before the API client is created
 (text limits, PNG/JPEG, icon 512x512, feature graphic 1024x500, 8 MiB per file), so a typo fails
-with exit code 2 instead of consuming an edit. `--metadata-dir` and `--changelog-dir` cannot be
-combined; the metadata directory already contains `changelogs/`.
+with exit code 2 instead of consuming an edit. The same directory also carries release notes
+under `changelogs/`; a tree with only changelogs is accepted.
 
 ### Recreating the tree from Play
 
@@ -156,9 +157,9 @@ google-play-publisher promote -p com.example.app --from beta --to production \
   --version-code 42 --rollout 0.1 --yes
 ```
 
-`--to production` requires `--yes`. On `promote`, `--changelog-dir` requires `--version-code`
-because there is no AAB to read it from; without `--changelog-dir` the source release notes and
-name are reused.
+`--to production` requires `--yes`. `promote --metadata-dir` applies listings, images, testers
+and release notes in the same edit. Release notes are read only together with `--version-code`;
+without it, changelog files are ignored and the source release notes and name are reused.
 
 ## GitHub Actions
 
@@ -179,7 +180,7 @@ with key decoding, JSON capture and Job Summary:
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
-    changelog-dir: android/metadata
+    metadata-dir: android/metadata
     credentials-file: ${{ runner.temp }}/sa.json
 ```
 

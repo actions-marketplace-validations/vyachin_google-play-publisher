@@ -105,8 +105,9 @@ func (m *Metadata) Empty() bool {
 	return len(m.Listings) == 0 && len(m.Images) == 0 && len(m.Testers) == 0
 }
 
-// Read parses and validates a metadata directory. An empty directory path
-// returns nil, so callers can treat "no metadata" uniformly.
+// Read parses and validates a metadata directory. An empty path, or a
+// directory that only contains changelogs, returns nil so callers can treat
+// "no store metadata" uniformly.
 //
 // Layout:
 //
@@ -170,10 +171,7 @@ func Read(dir string) (*Metadata, error) {
 	meta.Testers = testers
 
 	if meta.Empty() {
-		return nil, exitcode.WithHint(
-			exitcode.Errorf(exitcode.Usage, "no metadata found under %s", dir),
-			"expected <dir>/<locale>/title.txt and friends, <dir>/<locale>/images/ and <dir>/testers/<track>.txt",
-		)
+		return nil, nil
 	}
 
 	return meta, nil

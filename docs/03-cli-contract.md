@@ -70,9 +70,8 @@ google-play-publisher publish --package com.example.app \
 | `--track`, `-t` | string | `internal` | Track name; the MVP uses `internal` |
 | `--status` | enum | `completed` | `completed` \| `draft` \| `inProgress` (`inProgress` requires `--rollout`) |
 | `--rollout` | float | `0` | User fraction, `0 < f < 1`; implies `inProgress` when `--status` is omitted |
-| `--changelog-dir` | path | — | Play-style metadata directory: reads `<DIR>/<locale>/changelogs/<AAB versionCode>.txt` |
-| `--metadata-dir` | path | — | Full metadata tree: listings, images, testers and changelogs applied in the same edit |
-| `--version-code` | int | from the AAB | Optional assertion checked against the AAB and the upload; selects changelogs together with `--changelog-dir` |
+| `--metadata-dir` | path | — | Play-style metadata tree: listings, images, testers and `changelogs/<versionCode>.txt` applied in the same edit; a changelog-only tree is accepted |
+| `--version-code` | int | from the AAB | Optional assertion checked against the AAB and the upload; selects the changelog file with `--metadata-dir` |
 | `--release-name` | string | — | Release name stored in Play; empty lets Play generate it from the AAB version name |
 | `--changes-not-sent-for-review` | bool | `false` | Save changes without submitting them for review |
 | `--on-in-review` | enum | `error` | `error` → `ERROR_IF_IN_REVIEW`; `replace` → `CANCEL_IN_REVIEW_AND_SUBMIT` |
@@ -83,11 +82,12 @@ google-play-publisher publish --package com.example.app \
 | `--country` | list | — | Restrict the release to CLDR country codes (repeatable, `DE` or `DE,FR`); only for an `inProgress` release on `production` |
 | `--include-rest-of-world` | bool | `false` | Also target every country not listed in `--country`; requires at least one `--country` |
 
-Release notes come only from `--changelog-dir`. The version code is read from the AAB
-base manifest; a locale without `<versionCode>.txt` is skipped, so a partial translation is
-allowed. When no locale has a file, the command fails with exit code 2 and the paths that
-were checked before any edit is created. `--version-code` is an optional assertion: when
-supplied it must equal the AAB version code, and the uploaded bundle is checked against it.
+Release notes come from `--metadata-dir` when it is passed. The version code is read from the
+AAB base manifest; a locale without `<versionCode>.txt` is skipped, so a partial translation is
+allowed. A directory may contain only `changelogs/` or only listings/images/testers; when it
+contains neither store metadata nor a changelog for the AAB version code, the command fails with
+exit code 2 before any edit is created. `--version-code` is an optional assertion: when supplied
+it must equal the AAB version code, and the uploaded bundle is checked against it.
 `--metadata` remains an optional legacy cross-check: its `applicationId` and `versionCode`
 must equal the AAB values; a mismatch is a local input error (exit code 2) rejected before the
 API client is created, even with `--if-exists=skip`.
@@ -115,7 +115,6 @@ Combination validation (exit code 2 on violation):
 - `--package` different from the AAB package → error;
 - `--metadata` values different from the AAB values → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error;
-- `--metadata-dir` together with `--changelog-dir` → error;
 - `--in-app-update-priority` outside `0..5` → error;
 - `--country` that is not a two-letter CLDR code, or `--include-rest-of-world` without
   `--country` → error;
@@ -166,7 +165,7 @@ metadata/
       tenInchScreenshots/...
       tvScreenshots/...
       wearScreenshots/...
-    changelogs/42.txt         # release notes, same layout as --changelog-dir
+    changelogs/42.txt         # release notes
   testers/
     internal.txt              # one Google Group per line
     beta.txt
@@ -187,8 +186,7 @@ Rules:
 - tester files are `<track>.txt` with one Google Group address per line; blank lines and lines
   starting with `#` are ignored;
 - `--metadata-dir` also supplies release notes from `<locale>/changelogs/<versionCode>.txt`.
-  Changelogs are optional there, unlike `--changelog-dir`, which fails when no locale has one;
-- `--metadata-dir` and `--changelog-dir` cannot be combined (code 2);
+  Changelogs are optional, and a tree may contain only `changelogs/`;
 - the whole tree is validated before the API client is created: a malformed listing, image or
   tester file returns code 2 and no edit is opened.
 
@@ -341,7 +339,7 @@ No bundle is uploaded, so promotion works with artifacts that were built for ano
 | `--version-code` | int | highest on the source | Release to promote; must be on the source track |
 | `--status` | enum | `completed` | `completed` \| `draft` \| `inProgress` (`inProgress` requires `--rollout`) |
 | `--rollout` | float | — | Staged rollout fraction; implies `inProgress` |
-| `--changelog-dir` | path | — | `<DIR>/<locale>/changelogs/<versionCode>.txt`; requires `--version-code` |
+| `--metadata-dir` | path | — | Play-style metadata tree: listings, images, testers and changelogs applied in the same edit; changelogs require `--version-code` |
 | `--release-name` | string | source name | Release name stored in Play |
 | `--in-app-update-priority` | int | `0` | Same semantics as `publish` |
 | `--country`, `--include-rest-of-world` | | | Same semantics as `publish` |
@@ -354,10 +352,13 @@ Selection and data:
 
 - without `--version-code` the release with the highest version code on the source track is used;
   draft releases are ignored, and an explicitly selected draft is rejected with code 2;
-- release notes come from `--changelog-dir` when it is passed; otherwise the notes of the source
-  release are reused instead of silently dropping them;
+- `--metadata-dir` applies listings, images, testers and release notes in the same edit as the
+  promotion; a changelog-only tree is accepted;
+- release notes come from `<locale>/changelogs/<versionCode>.txt` when both `--metadata-dir`
+  and `--version-code` are passed; otherwise the notes of the source release are reused instead
+  of silently dropping them. Without `--version-code`, changelog files are ignored because
+  promotion has no AAB to select them;
 - the release name defaults to the source release name;
-- `--changelog-dir` requires `--version-code` because promotion has no AAB to read it from;
 - a version code that is already on the destination track is a conflict (code 5) — use `rollout`
   to change its fraction;
 - an unknown source release or an empty source track is code 4, and a missing destination track
@@ -482,7 +483,7 @@ success: `stdout` contains the error object with `error.code: "transient"`, and 
 names the package, track, version code and edit ID. The edit is kept.
 
 `rollout` and `promote` report the same envelope with `versionCodes` (an array) and an optional
-`userFraction`; `promote` adds `from`:
+`userFraction`; `promote` adds `from` and, with `--metadata-dir`, a `metadata` object:
 
 ```json
 {
@@ -496,6 +497,7 @@ names the package, track, version code and edit ID. The edit is kept.
   "versionCodes": [42],
   "editId": "0123456789",
   "review": "sent",
+  "metadata": {"listings": 1, "images": 0, "testers": 1},
   "durationMs": 3210
 }
 ```
@@ -534,7 +536,7 @@ version codes contributes twice.
 export GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/google-play-publisher/sa.json
 google-play-publisher doctor --package com.example.app
 google-play-publisher publish -p com.example.app -f app-release.aab -t internal \
-  --changelog-dir metadata --version-code 42 --release-name 1.0.42
+  --metadata-dir metadata --version-code 42 --release-name 1.0.42
 ```
 
 `metadata/` uses the Play/fastlane layout: `metadata/<locale>/changelogs/42.txt`.
@@ -553,7 +555,7 @@ tool's responsibility.
       --package "$PACKAGE" \
       --aab app/build/outputs/bundle/release/app-release.aab \
       --track internal \
-      --changelog-dir metadata --version-code "$VERSION_CODE" \
+      --metadata-dir metadata --version-code "$VERSION_CODE" \
       --json > publish.json
 ```
 
@@ -577,7 +579,7 @@ Pipeline requirements:
 google-play-publisher publish -p com.example.app -f app-release.aab \
   -t production --status inProgress --rollout 0.05 \
   --country DE --country AT --in-app-update-priority 3 \
-  --changelog-dir metadata --version-code 42 --release-name 1.0.42
+  --metadata-dir metadata --version-code 42 --release-name 1.0.42
 # later: raise the fraction, then finish
 google-play-publisher rollout -p com.example.app -t production --version-code 42 --fraction 0.2
 google-play-publisher rollout -p com.example.app -t production --version-code 42 --complete

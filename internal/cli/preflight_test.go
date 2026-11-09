@@ -50,7 +50,7 @@ func TestPublishLocalValidationBeforeClient(t *testing.T) {
 		}},
 		{"too long changelog", []string{
 			"publish", "-p", "com.example.app", "-f", aab,
-			"--changelog-dir", changelogDir, "--version-code", "42",
+			"--metadata-dir", changelogDir, "--version-code", "42",
 		}},
 	}
 

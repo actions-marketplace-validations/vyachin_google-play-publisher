@@ -22,7 +22,6 @@ type publishFlags struct {
 	Track                   string
 	Status                  string
 	Rollout                 float64
-	ChangelogDir            string
 	MetadataDir             string
 	VersionCode             int64
 	ReleaseName             string
@@ -90,9 +89,8 @@ optional assertions. The default track is "internal".`,
 	f.StringVarP(&flags.Track, "track", "t", "internal", "release track")
 	f.StringVar(&flags.Status, "status", "completed", "release status: draft, inProgress or completed")
 	f.Float64Var(&flags.Rollout, "rollout", 0, "staged rollout fraction between 0 and 1")
-	f.StringVar(&flags.ChangelogDir, "changelog-dir", "", "directory with <locale>/changelogs/<versionCode>.txt release notes")
 	f.StringVar(&flags.MetadataDir, "metadata-dir", "",
-		"Play-style metadata directory: listings, images, testers and changelogs applied in the same edit")
+		"Play-style metadata tree applied in the same edit; a changelog-only tree is accepted")
 	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code assertion (default: from the AAB)")
 	f.StringVar(&flags.ReleaseName, "release-name", "", "release name shown in Play Console")
 	f.BoolVar(&flags.ChangesNotSentForReview, "changes-not-sent-for-review", false,
@@ -142,7 +140,6 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		Package:                 flags.Package,
 		AABPath:                 flags.AAB,
 		MetadataPath:            flags.Metadata,
-		ChangelogDir:            flags.ChangelogDir,
 		MetadataDir:             flags.MetadataDir,
 		VersionCode:             flags.VersionCode,
 		Track:                   flags.Track,

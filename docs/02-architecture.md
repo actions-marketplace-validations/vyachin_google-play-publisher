@@ -133,7 +133,7 @@ without a network call. Retries of the remaining safely repeatable calls are bou
 
 `app.Prepare` owns all local validation, including the policy options (`--if-exists`,
 `--on-in-review`, `--dry-run` together with `--changes-not-sent-for-review`), resolving
-package and version code from the AAB manifest, and reading `--changelog-dir` notes after the
+package and version code from the AAB manifest, and reading `--metadata-dir` notes after the
 version code is known. It opens the AAB once and returns an opaque prepared operation that
 owns the handle; `PublishPrepared` accepts only that value, uploads from the same handle and
 closes it on every path. A direct app caller cannot apply options that were not validated.

@@ -30,7 +30,8 @@ track="${GPP_TRACK:-internal}"
 if_exists="${GPP_IF_EXISTS:-fail}"
 timeout_value="${GPP_TIMEOUT:-}"
 debug="${GPP_DEBUG:-false}"
-changelog_dir="${GPP_CHANGELOG_DIR:-}"
+metadata_dir="${GPP_METADATA_DIR:-}"
+legacy_changelog_dir="${GPP_CHANGELOG_DIR:-}"
 version_code="${GPP_VERSION_CODE:-}"
 release_name="${GPP_RELEASE_NAME:-}"
 
@@ -105,9 +106,17 @@ elif [ -n "$credentials_file" ]; then
 	[ -f "$cred_path" ] || die "credentials-file ${credentials_file} does not exist"
 fi
 
+if [ -n "$metadata_dir" ] && [ -n "$legacy_changelog_dir" ]; then
+	die "metadata-dir and changelog-dir are mutually exclusive; changelog-dir is deprecated"
+fi
+if [ -z "$metadata_dir" ] && [ -n "$legacy_changelog_dir" ]; then
+	warn "changelog-dir is deprecated; use metadata-dir"
+	metadata_dir="$legacy_changelog_dir"
+fi
+
 args=(publish --json --package "$package" --aab "$(resolve_path "$aab")" --track "$track")
-if [ -n "$changelog_dir" ]; then
-	args+=(--changelog-dir "$(resolve_path "$changelog_dir")")
+if [ -n "$metadata_dir" ]; then
+	args+=(--metadata-dir "$(resolve_path "$metadata_dir")")
 fi
 if [ -n "$version_code" ]; then
 	args+=(--version-code "$version_code")

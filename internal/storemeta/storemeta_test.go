@@ -202,12 +202,6 @@ func TestReadRejectsIncompleteAndInvalidInput(t *testing.T) {
 			want: "lists no Google Groups",
 		},
 		{
-			name: "empty directory",
-			build: func(_ *testing.T, _ string) {
-			},
-			want: "no metadata found",
-		},
-		{
 			name: "video is not a URL",
 			build: func(t *testing.T, dir string) {
 				writeListing(t, dir, "en-US")
@@ -230,6 +224,18 @@ func TestReadRejectsIncompleteAndInvalidInput(t *testing.T) {
 				t.Fatalf("error %q does not contain %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestReadEmptyDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "en-US", "changelogs"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	meta, err := storemeta.Read(dir)
+	if err != nil || meta != nil {
+		t.Fatalf("meta = %+v, err = %v; want nil, nil", meta, err)
 	}
 }
 

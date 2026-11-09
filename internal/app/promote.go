@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/release"
+	"github.com/vyachin/google-play-publisher/internal/storemeta"
 )
 
 // PromoteOptions describe a promotion: the version codes of a release on one
@@ -19,7 +21,7 @@ type PromoteOptions struct {
 	Status              string
 	Rollout             *float64
 	Notes               map[string]string
-	ChangelogDir        string
+	MetadataDir         string
 	ReleaseName         string
 	InAppUpdatePriority int
 	Countries           []string
@@ -41,12 +43,15 @@ type PromoteResult struct {
 	UserFraction float64
 	EditID       string
 	Review       string
+	// Metadata is nil when --metadata-dir was not used.
+	Metadata *MetadataResult
 }
 
 // PreparedPromote holds a promotion validated by PreparePromote.
 type PreparedPromote struct {
-	opts PromoteOptions
-	plan release.Plan
+	opts  PromoteOptions
+	plan  release.Plan
+	store *storemeta.Metadata
 }
 
 // PreparePromote validates every local input. It fails with exit code 2 before
@@ -89,20 +94,38 @@ func PreparePromote(opts PromoteOptions) (PreparedPromote, error) {
 		return PreparedPromote{}, exitcode.Errorf(exitcode.Usage,
 			"--version-code must be positive, got %d", opts.VersionCode)
 	}
-	if opts.ChangelogDir != "" && opts.VersionCode == 0 {
-		return PreparedPromote{}, exitcode.Errorf(exitcode.Usage,
-			"--changelog-dir requires --version-code when promoting: there is no AAB to read it from")
-	}
 	if err := validateCommitSettings(opts.ChangesNotSentForReview, opts.DryRun, opts.InReviewBehavior); err != nil {
 		return PreparedPromote{}, err
 	}
 
+	if opts.MetadataDir != "" && len(opts.Notes) > 0 {
+		return PreparedPromote{}, exitcode.Errorf(exitcode.Usage,
+			"release notes cannot be supplied together with --metadata-dir")
+	}
+
 	notes := opts.Notes
-	if opts.ChangelogDir != "" {
-		notes, err = readChangelogDir(opts.ChangelogDir, opts.VersionCode)
+	if opts.MetadataDir != "" && opts.VersionCode > 0 {
+		notes, err = readChangelogDir(opts.MetadataDir, opts.VersionCode)
 		if err != nil {
 			return PreparedPromote{}, err
 		}
+	}
+
+	store, err := storemeta.Read(opts.MetadataDir)
+	if err != nil {
+		return PreparedPromote{}, err
+	}
+	if opts.MetadataDir != "" && store == nil && len(notes) == 0 {
+		if opts.VersionCode == 0 {
+			return PreparedPromote{}, exitcode.WithHint(
+				exitcode.Errorf(exitcode.Usage,
+					"no store metadata found under %s", opts.MetadataDir),
+				"pass --version-code to read a changelog-only tree, or add listings, images or testers")
+		}
+		return PreparedPromote{}, exitcode.WithHint(
+			exitcode.Errorf(exitcode.Usage,
+				"no store metadata or changelog for versionCode %d under %s", opts.VersionCode, opts.MetadataDir),
+			"add <dir>/<locale>/changelogs/"+strconv.FormatInt(opts.VersionCode, 10)+".txt, or a full metadata tree")
 	}
 
 	plan, err := release.NewPlan(release.Input{
@@ -119,7 +142,7 @@ func PreparePromote(opts PromoteOptions) (PreparedPromote, error) {
 		return PreparedPromote{}, err
 	}
 
-	return PreparedPromote{opts: opts, plan: plan}, nil
+	return PreparedPromote{opts: opts, plan: plan, store: store}, nil
 }
 
 // Track returns the validated destination track.
@@ -202,6 +225,11 @@ func (p *Publisher) PromotePrepared(ctx context.Context, prepared PreparedPromot
 		target.Name = origin.Name
 	}
 
+	applied, err := p.applyMetadata(ctx, opts.Package, editID, prepared.store)
+	if err != nil {
+		return PromoteResult{}, err
+	}
+
 	if err := p.api.UpdateTrack(ctx, opts.Package, editID, opts.To, target); err != nil {
 		return PromoteResult{}, err
 	}
@@ -214,6 +242,7 @@ func (p *Publisher) PromotePrepared(ctx context.Context, prepared PreparedPromot
 		VersionCodes: target.VersionCodes,
 		UserFraction: target.UserFraction,
 		EditID:       editID,
+		Metadata:     applied,
 	}
 
 	if opts.DryRun {

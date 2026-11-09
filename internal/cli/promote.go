@@ -19,7 +19,7 @@ type promoteFlags struct {
 	VersionCode             int64
 	Status                  string
 	Rollout                 float64
-	ChangelogDir            string
+	MetadataDir             string
 	ReleaseName             string
 	InAppUpdatePriority     int
 	Countries               []string
@@ -42,14 +42,14 @@ track, without uploading a bundle again. The source release is chosen by --versi
 when it is omitted, as the release with the highest version code that is not a draft.
 
 Promotion to the production track needs --yes. Use --rollout to start a staged rollout instead
-of a full release; --changelog-dir requires --version-code because there is no AAB to read it
-from.`,
+of a full release. --metadata-dir applies listings, images, testers and (with --version-code)
+release notes in the same edit.`,
 		Example: `  # promote the latest internal build to closed testing
   google-play-publisher promote -p com.example.app --from internal --to beta
 
   # staged production rollout of a known version, with notes
   google-play-publisher promote -p com.example.app --from beta --to production \
-    --version-code 42 --rollout 0.1 --changelog-dir metadata --yes`,
+    --version-code 42 --rollout 0.1 --metadata-dir metadata --yes`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runPromote(cmd, a, g, flags)
@@ -63,8 +63,8 @@ from.`,
 	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code to promote (default: the highest on the source track)")
 	f.StringVar(&flags.Status, "status", "completed", "release status: draft, inProgress or completed")
 	f.Float64Var(&flags.Rollout, "rollout", 0, "staged rollout fraction between 0 and 1")
-	f.StringVar(&flags.ChangelogDir, "changelog-dir", "",
-		"directory with <locale>/changelogs/<versionCode>.txt release notes; requires --version-code")
+	f.StringVar(&flags.MetadataDir, "metadata-dir", "",
+		"Play-style metadata tree applied in the same edit; changelogs require --version-code")
 	f.StringVar(&flags.ReleaseName, "release-name", "", "release name shown in Play Console (default: the source release name)")
 	f.IntVar(&flags.InAppUpdatePriority, "in-app-update-priority", 0,
 		"in-app update priority from 0 (disabled) to 5 (highest)")
@@ -111,7 +111,7 @@ func runPromote(cmd *cobra.Command, a *App, g *globalFlags, flags *promoteFlags)
 		VersionCode:             flags.VersionCode,
 		Status:                  status,
 		Rollout:                 rollout,
-		ChangelogDir:            flags.ChangelogDir,
+		MetadataDir:             flags.MetadataDir,
 		ReleaseName:             flags.ReleaseName,
 		InAppUpdatePriority:     flags.InAppUpdatePriority,
 		Countries:               flags.Countries,
@@ -156,7 +156,7 @@ func runPromote(cmd *cobra.Command, a *App, g *globalFlags, flags *promoteFlags)
 }
 
 func promoteJSON(result appcore.PromoteResult) trackChangeJSON {
-	return trackChangeJSON{
+	out := trackChangeJSON{
 		Command:      "promote",
 		Package:      result.Package,
 		From:         result.From,
@@ -167,24 +167,37 @@ func promoteJSON(result appcore.PromoteResult) trackChangeJSON {
 		EditID:       result.EditID,
 		Review:       result.Review,
 	}
+	if result.Metadata != nil {
+		out.Metadata = &metadataOutput{
+			Listings: result.Metadata.Listings,
+			Images:   result.Metadata.Images,
+			Testers:  result.Metadata.Testers,
+		}
+	}
+	return out
 }
 
 func promoteLine(result appcore.PromoteResult) string {
 	codes := formatVersionCodes(result.VersionCodes)
+	suffix := ""
+	if result.Metadata != nil {
+		suffix = fmt.Sprintf(" [metadata: %d listings, %d images, %d tester lists]",
+			result.Metadata.Listings, result.Metadata.Images, result.Metadata.Testers)
+	}
 
 	switch result.Review {
 	case appcore.ReviewValidated:
-		return fmt.Sprintf("validated promotion of %s version %s from %s to %s (dry run, edit %s deleted)",
-			result.Package, codes, result.From, result.To, result.EditID)
+		return fmt.Sprintf("validated promotion of %s version %s from %s to %s (dry run, edit %s deleted)%s",
+			result.Package, codes, result.From, result.To, result.EditID, suffix)
 	case appcore.ReviewNotSent:
-		return fmt.Sprintf("saved promotion of %s version %s from %s to %s without review (edit %s)",
-			result.Package, codes, result.From, result.To, result.EditID)
+		return fmt.Sprintf("saved promotion of %s version %s from %s to %s without review (edit %s)%s",
+			result.Package, codes, result.From, result.To, result.EditID, suffix)
 	}
 
 	detail := result.Status
 	if result.Status == string(release.StatusInProgress) {
 		detail += " at " + formatPercent(result.UserFraction)
 	}
-	return fmt.Sprintf("promoted %s version %s from %s to %s (%s, review %s, edit %s)",
-		result.Package, codes, result.From, result.To, detail, result.Review, result.EditID)
+	return fmt.Sprintf("promoted %s version %s from %s to %s (%s, review %s, edit %s)%s",
+		result.Package, codes, result.From, result.To, detail, result.Review, result.EditID, suffix)
 }

@@ -14,8 +14,11 @@ inputs:
     description: Release track
     required: false
     default: internal
+  metadata-dir:
+    description: Play-style metadata tree with listings, images, testers and <locale>/changelogs/<versionCode>.txt files
+    required: false
   changelog-dir:
-    description: Play-style metadata directory with <locale>/changelogs/<versionCode>.txt files
+    description: 'Deprecated: use metadata-dir; kept as an alias for a changelog-only tree'
     required: false
   version-code:
     description: Version code used for changelog lookup and upload verification
@@ -74,6 +77,7 @@ runs:
         GPP_PACKAGE: ${{ inputs.package }}
         GPP_AAB: ${{ inputs.aab }}
         GPP_TRACK: ${{ inputs.track }}
+        GPP_METADATA_DIR: ${{ inputs['metadata-dir'] }}
         GPP_CHANGELOG_DIR: ${{ inputs['changelog-dir'] }}
         GPP_VERSION_CODE: ${{ inputs['version-code'] }}
         GPP_RELEASE_NAME: ${{ inputs['release-name'] }}

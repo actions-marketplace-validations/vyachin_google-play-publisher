@@ -35,7 +35,6 @@ type PublishOptions struct {
 	Package                 string
 	AABPath                 string
 	MetadataPath            string
-	ChangelogDir            string
 	MetadataDir             string
 	VersionCode             int64
 	Track                   string
@@ -217,33 +216,29 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 	opts.Package = resolved.Package
 	opts.VersionCode = resolved.VersionCode
 
-	if opts.MetadataDir != "" && opts.ChangelogDir != "" {
+	if opts.MetadataDir != "" && len(opts.Notes) > 0 {
 		return Prepared{}, exitcode.Errorf(exitcode.Usage,
-			"--metadata-dir and --changelog-dir cannot be combined: --metadata-dir already contains changelogs")
-	}
-	notesDir := opts.ChangelogDir
-	if opts.MetadataDir != "" {
-		notesDir = opts.MetadataDir
-	}
-	if notesDir != "" && len(opts.Notes) > 0 {
-		return Prepared{}, exitcode.Errorf(exitcode.Usage,
-			"release notes cannot come from both a metadata directory and notes passed by a caller")
+			"release notes cannot be supplied together with --metadata-dir")
 	}
 
 	notes := opts.Notes
-	switch {
-	case opts.MetadataDir != "":
-		notes, err = readChangelogDirOptional(opts.MetadataDir, opts.VersionCode)
-	case opts.ChangelogDir != "":
-		notes, err = readChangelogDir(opts.ChangelogDir, opts.VersionCode)
-	}
-	if err != nil {
-		return Prepared{}, err
+	if opts.MetadataDir != "" {
+		notes, err = readChangelogDir(opts.MetadataDir, opts.VersionCode)
+		if err != nil {
+			return Prepared{}, err
+		}
 	}
 
 	store, err := storemeta.Read(opts.MetadataDir)
 	if err != nil {
 		return Prepared{}, err
+	}
+	if opts.MetadataDir != "" && store == nil && len(notes) == 0 {
+		return Prepared{}, exitcode.WithHint(
+			exitcode.Errorf(exitcode.Usage,
+				"no store metadata or changelog for versionCode %d under %s", opts.VersionCode, opts.MetadataDir),
+			fmt.Sprintf("add %s/<locale>/changelogs/%d.txt, or a full metadata tree with listings, images or testers",
+				opts.MetadataDir, opts.VersionCode))
 	}
 
 	plan, err := release.NewPlan(release.Input{

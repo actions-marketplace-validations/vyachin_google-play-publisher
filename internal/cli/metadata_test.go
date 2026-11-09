@@ -66,19 +66,3 @@ func TestPublishMetadataDirTextOutput(t *testing.T) {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }
-
-func TestPublishRejectsMetadataDirWithChangelogDir(t *testing.T) {
-	fake := &playtest.Fake{}
-
-	_, errOut, code := runWithAPI(t, fake, "publish", "-f", writeAAB(t),
-		"--metadata-dir", writeMetadataTree(t), "--changelog-dir", t.TempDir())
-	if code != int(exitcode.Usage) {
-		t.Fatalf("code = %d, want %d: %s", code, exitcode.Usage, errOut)
-	}
-	if !strings.Contains(errOut, "cannot be combined") {
-		t.Fatalf("unexpected error: %s", errOut)
-	}
-	if len(fake.Calls) != 0 {
-		t.Fatalf("API was called for invalid input: %v", fake.Calls)
-	}
-}
