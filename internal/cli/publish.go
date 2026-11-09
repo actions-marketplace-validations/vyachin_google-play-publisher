@@ -25,6 +25,7 @@ type publishFlags struct {
 	ChangelogDir            string
 	VersionCode             int64
 	ReleaseName             string
+	ExpectedTag             string
 	ChangesNotSentForReview bool
 	OnInReview              string
 	IfExists                string
@@ -81,6 +82,7 @@ optional assertions. The default track is "internal".`,
 	f.StringVar(&flags.ChangelogDir, "changelog-dir", "", "directory with <locale>/changelogs/<versionCode>.txt release notes")
 	f.Int64Var(&flags.VersionCode, "version-code", 0, "version code assertion (default: from the AAB)")
 	f.StringVar(&flags.ReleaseName, "release-name", "", "release name shown in Play Console")
+	f.StringVar(&flags.ExpectedTag, "expected-tag", "", "assert the release tag (v<AAB versionName>)")
 	f.BoolVar(&flags.ChangesNotSentForReview, "changes-not-sent-for-review", false,
 		"save changes without sending them for review")
 	f.StringVar(&flags.OnInReview, "on-in-review", "error", "behavior when changes are in review: error or replace")
@@ -122,6 +124,7 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		Rollout:                 flags.Rollout,
 		RolloutSet:              cmd.Flags().Changed("rollout"),
 		ReleaseName:             flags.ReleaseName,
+		ExpectedTag:             flags.ExpectedTag,
 		IfExists:                exists,
 		ChangesNotSentForReview: flags.ChangesNotSentForReview,
 		InReviewBehavior:        inReview,

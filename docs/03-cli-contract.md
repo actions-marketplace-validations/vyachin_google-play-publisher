@@ -71,6 +71,7 @@ google-play-publisher publish --package com.example.app \
 | `--changelog-dir` | path | — | Play-style metadata directory: reads `<DIR>/<locale>/changelogs/<AAB versionCode>.txt` |
 | `--version-code` | int | from the AAB | Optional assertion checked against the AAB and the upload; selects changelogs together with `--changelog-dir` |
 | `--release-name` | string | — | Release name stored in Play; empty lets Play generate it from the AAB version name |
+| `--expected-tag` | string | — | Assert the release tag as `v<AAB versionName>`; a missing version name or a mismatch is exit code 2 before the API client exists |
 | `--changes-not-sent-for-review` | bool | `false` | Save changes without submitting them for review |
 | `--on-in-review` | enum | `error` | `error` → `ERROR_IF_IN_REVIEW`; `replace` → `CANCEL_IN_REVIEW_AND_SUBMIT` |
 | `--if-exists` | enum | `fail` | `fail` \| `skip` — behavior when the version code is already on the track |
@@ -108,6 +109,7 @@ Combination validation (exit code 2 on violation):
 - `--version-code` different from the AAB version code → error;
 - `--package` different from the AAB package → error;
 - `--metadata` values different from the AAB values → error;
+- `--expected-tag` without an AAB `versionName`, or different from `v<versionName>` → error;
 - `--changes-not-sent-for-review` together with `--dry-run` → error.
 
 `--dry-run` is not "do nothing": the AAB is actually uploaded, the edit is validated and then

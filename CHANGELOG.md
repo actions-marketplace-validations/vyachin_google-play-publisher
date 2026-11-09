@@ -10,6 +10,7 @@
 - `--changelog-dir` selects notes with the AAB version code; `--version-code` is no longer
   required.
 - `--if-exists=skip` works without a metadata sidecar.
+- `--expected-tag` asserts `v<AAB versionName>` before any upload.
 - `--json` publish results include `schemaVersion` and `versionName`.
 
 ### Changed

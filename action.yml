@@ -23,6 +23,9 @@ inputs:
   release-name:
     description: Release name shown in Play Console (empty lets Play generate it)
     required: false
+  expected-tag:
+    description: Assert the release tag as v<AAB versionName>, for example v1.0.42
+    required: false
   if-exists:
     description: Behavior when the version code is already on the track (fail or skip)
     required: false
@@ -77,6 +80,7 @@ runs:
         GPP_CHANGELOG_DIR: ${{ inputs['changelog-dir'] }}
         GPP_VERSION_CODE: ${{ inputs['version-code'] }}
         GPP_RELEASE_NAME: ${{ inputs['release-name'] }}
+        GPP_EXPECTED_TAG: ${{ inputs['expected-tag'] }}
         GPP_IF_EXISTS: ${{ inputs['if-exists'] }}
         GPP_CREDENTIALS_BASE64: ${{ inputs['credentials-base64'] }}
         GPP_CREDENTIALS_FILE: ${{ inputs['credentials-file'] }}

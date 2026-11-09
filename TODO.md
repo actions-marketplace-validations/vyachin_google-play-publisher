@@ -546,8 +546,9 @@ The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
 document, verify and release the result. S10 can proceed independently of the S9
 rollout/promote work. S10.0 is accepted in
-[ADR-0004](docs/adr/0004-github-actions.md); S10.1–S10.3 (setup action, publish action
-and AAB identity) are implemented; implementation continues with S10.4.
+[ADR-0004](docs/adr/0004-github-actions.md); S10.1–S10.4 (setup action, publish action,
+AAB identity and expected-tag validation) are implemented; implementation continues with
+S10.5.
 
 ### Analysis
 
@@ -735,18 +736,18 @@ Gunclub workflow switch itself is S10.6.
 parsing `build.gradle.kts` or depending on an AGP intermediate metadata path, and the uploaded
 bytes are the inspected bytes.
 
-### S10.4. Validate the expected tag and simplify action inputs — 0.5–1 d
+### S10.4. Validate the expected tag and simplify action inputs — 0.5–1 d — done
 
-- [ ] Define the `--expected-tag` contract: exact comparison against `v<versionName>` from the
+- [x] Define the `--expected-tag` contract: exact comparison against `v<versionName>` from the
       AAB, exit code 2 when the tag or `versionName` is missing or mismatched, before API
       construction and upload. Document the behavior when `versionName` is absent.
-- [ ] Add the `expected-tag` action input and pass `${{ github.ref_name }}` in the documented
+- [x] Add the `expected-tag` action input and pass `${{ github.ref_name }}` in the documented
       tag-triggered workflow; keep the input empty by default for branch runs.
-- [ ] Make the `version-code` and `release-name` action inputs optional according to D4,
+- [x] Keep the `version-code` and `release-name` action inputs optional according to D4,
       keeping `package` as an explicit guard against publishing the wrong app.
-- [ ] Update the documented workflow to drop Gradle `sed` parsing and duplicate changelog
-      validation once the released CLI provides equivalent checks.
-- [ ] Test matching and mismatched tags, a missing version name, explicit overrides, and
+- [x] Drop Gradle `sed` parsing and duplicate changelog validation from the documented
+      workflow; the full copyable workflow is completed in S10.5.
+- [x] Test matching and mismatched tags, a missing version name, explicit overrides, and
       failures before upload; test that omitting the version code selects the right changelog
       files.
 

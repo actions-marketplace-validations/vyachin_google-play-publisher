@@ -115,6 +115,7 @@ run_publish "${COMMON[@]}" \
 	GPP_CHANGELOG_DIR="meta data" \
 	GPP_VERSION_CODE=42 \
 	GPP_RELEASE_NAME=1.0.42 \
+	GPP_EXPECTED_TAG=v1.0.42 \
 	GPP_IF_EXISTS=skip \
 	GPP_TIMEOUT=5m \
 	GPP_DEBUG=true
@@ -129,6 +130,7 @@ grep -qF -- "--json" "${WORK}/stub_args" && ok "runs the CLI with --json" || not
 grep -qF -- "${WORK}/workspace/app dir/app release.aab" "${WORK}/stub_args" && ok "resolves the AAB path against GITHUB_WORKSPACE" || not_ok "resolves the AAB path against GITHUB_WORKSPACE"
 grep -qF -- "${WORK}/workspace/meta data" "${WORK}/stub_args" && ok "resolves the changelog path against GITHUB_WORKSPACE" || not_ok "resolves the changelog path against GITHUB_WORKSPACE"
 grep -qF -- "--debug" "${WORK}/stub_args" && ok "forwards debug" || not_ok "forwards debug"
+grep -qF -- "v1.0.42" "${WORK}/stub_args" && ok "forwards the expected tag" || not_ok "forwards the expected tag"
 grep -qF "Google Play publish" "${WORK}/summary" && ok "writes the Job Summary" || not_ok "writes the Job Summary"
 
 # Idempotent skip: no edit id.

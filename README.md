@@ -81,6 +81,8 @@ is optional; when it is empty, Play generates the name from the AAB version name
   consumes the `versionCode`, so never dry-run a release build.
 - `--debug` — detailed HTTP, phase and retry logs (secrets are redacted).
 - `--if-exists=skip` — idempotent rerun when the AAB version code is already on the track.
+- `--expected-tag "v$(VERSION_NAME)"` — assert that the AAB version name matches the release
+  tag; a mismatch fails before any upload.
 - `google-play-publisher completion bash|zsh|fish|powershell` — shell completion.
 
 ## Limitations
