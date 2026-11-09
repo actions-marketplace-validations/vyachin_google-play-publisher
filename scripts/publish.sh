@@ -105,7 +105,7 @@ elif [ -n "$credentials_file" ]; then
 	[ -f "$cred_path" ] || die "credentials-file ${credentials_file} does not exist"
 fi
 
-args=(--json --package "$package" --aab "$(resolve_path "$aab")" --track "$track")
+args=(publish --json --package "$package" --aab "$(resolve_path "$aab")" --track "$track")
 if [ -n "$changelog_dir" ]; then
 	args+=(--changelog-dir "$(resolve_path "$changelog_dir")")
 fi

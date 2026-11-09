@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.0.7 — 2026-11-09
+
+### Fixed
+
+- The publish action invoked the CLI without the `publish` subcommand, so every real
+  publication failed with `unknown flag: --package`. The action now runs
+  `google-play-publisher publish ...`; a shell regression test asserts the subcommand, and a CI
+  job runs the action with the real CLI and a missing AAB to verify that the CLI parses the
+  forwarded flags.
+- `v0.0.6` is superseded by this release because its publish action could not publish.
+
 ## v0.0.6 — 2026-11-09
 
 ### Fixed
