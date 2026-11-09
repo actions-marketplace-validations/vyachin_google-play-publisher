@@ -545,7 +545,8 @@ responsibilities of the consuming workflow.
 The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2 add actions on
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
 document, verify and release the result. S10 can proceed independently of the S9
-rollout/promote work.
+rollout/promote work. S10.0 is accepted in
+[ADR-0004](docs/adr/0004-github-actions.md); implementation continues with S10.1.
 
 ### Analysis
 
