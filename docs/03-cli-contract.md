@@ -325,6 +325,11 @@ not the call sequence, not the timeouts, not the exit code — only the amount o
 | Source of every parameter (flag / env / default) | no | **yes** |
 | Stack trace for `INTERNAL` | no | **yes** |
 
+JSON bodies are redacted before they are logged. A secret value cut off by the 4 KiB
+capture limit or containing escaped quotes is still replaced with `[redacted]`; a body that
+cannot be redacted safely is omitted from the log and the original payload is still replayed
+unchanged.
+
 Redaction — the log **never** contains:
 
 - `Authorization`, `Proxy-Authorization` and any OAuth tokens;

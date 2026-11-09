@@ -13,6 +13,8 @@
 - Text output failures in `publish`, `status` and `doctor` are no longer ignored: they
   return a nonzero code, while a saved release keeps exit code 8 and `doctor` keeps the code
   of the failed check.
+- Debug body capture redacts secrets that cross the 4 KiB capture limit or contain escaped
+  quotes, and omits a body that cannot be redacted safely; the replayed payload is unchanged.
 
 ## v0.0.2 — 2026-11-09
 

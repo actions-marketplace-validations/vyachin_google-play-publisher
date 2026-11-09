@@ -157,7 +157,7 @@ Requirements:
   correlation id and attempt number — enough to investigate without rerunning.
 - Fields: `http_code`, `reason`, `attempt`, `phase`, `edit_id`, `version_code`.
 - The Play response body is logged only after redaction (never `Authorization`, tokens or key
-  contents).
+  contents); a body that cannot be redacted safely is not logged at all.
 - For auditing, `edit_id` + `version_code` + time are enough: they identify the attempt.
 
 ## 7. What is not a tool error

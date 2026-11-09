@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 type partialBody struct {
@@ -200,5 +201,115 @@ func TestTransportPreservesPartialReadError(t *testing.T) {
 	}
 	if debugClosed != plainClosed {
 		t.Fatalf("close semantics differ: debug=%v plain=%v", debugClosed, plainClosed)
+	}
+}
+
+func TestCaptureBodyRedactsLongSecret(t *testing.T) {
+	token := strings.Repeat("s", 5000)
+	raw := []byte(`{"access_token":"` + token + `"}`)
+	body := &countingBody{payload: raw}
+
+	logged, replay := captureBody(body, int64(len(raw)), "application/json")
+	if strings.Contains(logged, strings.Repeat("s", 20)) {
+		t.Fatalf("debug copy leaks the token prefix: %q", logged)
+	}
+	if !strings.Contains(logged, `"access_token":"[redacted]"`) {
+		t.Fatalf("token was not redacted: %q", logged)
+	}
+
+	got, err := io.ReadAll(replay)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if !bytes.Equal(got, raw) {
+		t.Fatalf("replayed body changed: %d bytes, want %d", len(got), len(raw))
+	}
+}
+
+func TestCaptureBodyRedactsSecretNearCaptureLimit(t *testing.T) {
+	token := strings.Repeat("s", 5000)
+	raw := []byte(`{"pad":"` + strings.Repeat("x", 4050) + `","access_token":"` + token + `"}`)
+	body := &countingBody{payload: raw}
+
+	logged, _ := captureBody(body, int64(len(raw)), "application/json")
+	if strings.Contains(logged, strings.Repeat("s", 20)) {
+		t.Fatalf("debug copy leaks a token that starts before the limit: %q", logged)
+	}
+	if !strings.Contains(logged, `"access_token":"[redacted]"`) {
+		t.Fatalf("token was not redacted: %q", logged)
+	}
+}
+
+func TestCaptureBodyRedactsEscapedSecret(t *testing.T) {
+	raw := []byte(`{"client_secret":"abc\"def","id":"edit-1"}`)
+
+	logged := redact(raw, false)
+	if strings.Contains(logged, "abc") || strings.Contains(logged, "def") {
+		t.Fatalf("escaped secret leaked: %q", logged)
+	}
+	if !strings.Contains(logged, `"client_secret":"[redacted]"`) {
+		t.Fatalf("escaped secret was not redacted: %q", logged)
+	}
+	if !strings.Contains(logged, `"id":"edit-1"`) {
+		t.Fatalf("non-secret content changed: %q", logged)
+	}
+}
+
+func TestCaptureBodyKeepsEscapedNonSecret(t *testing.T) {
+	raw := []byte(`{"note":"a\"b"}`)
+
+	logged := redact(raw, false)
+	if logged != string(raw) {
+		t.Fatalf("logged body = %q, want %q", logged, raw)
+	}
+}
+
+func TestCaptureBodyRedactsSecretOnPartialRead(t *testing.T) {
+	body := &partialBody{
+		data: []byte(`{"refresh_token":"secret-value`),
+		err:  io.ErrUnexpectedEOF,
+	}
+
+	logged, _ := captureBody(body, 64, "application/json")
+	if strings.Contains(logged, "secret-value") {
+		t.Fatalf("partial read leaked the token: %q", logged)
+	}
+	if !strings.Contains(logged, `"refresh_token":"[redacted]"`) {
+		t.Fatalf("partial-read token was not redacted: %q", logged)
+	}
+}
+
+func TestRedactOmitsUnredactableBody(t *testing.T) {
+	if logged := redact([]byte(`{"access_token":123}`), false); logged != "" {
+		t.Fatalf("unsafe body was logged: %q", logged)
+	}
+	if logged := redact([]byte(`{"access_token":null}`), false); logged != "" {
+		t.Fatalf("unsafe body was logged: %q", logged)
+	}
+}
+
+func TestRedactHandlesMultipleSecrets(t *testing.T) {
+	raw := []byte(`{"access_token":"one","id":"edit-1","refresh_token":"two"}`)
+
+	logged := redact(raw, false)
+	for _, secret := range []string{"one", "two"} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("secret %q leaked: %q", secret, logged)
+		}
+	}
+	if got := strings.Count(logged, "[redacted]"); got != 2 {
+		t.Fatalf("redacted %d values, want 2: %q", got, logged)
+	}
+}
+
+func TestRedactTruncatesAtRuneBoundary(t *testing.T) {
+	payload := []byte(strings.Repeat("a", maxLoggedBody-1) + "€")
+
+	logged := redact(payload, false)
+	if !utf8.ValidString(logged) {
+		t.Fatalf("truncated log is not valid UTF-8: %q", logged)
+	}
+	if !strings.HasSuffix(logged, "...(truncated)") {
+		t.Fatalf("log copy is not marked as truncated: %q", logged)
 	}
 }

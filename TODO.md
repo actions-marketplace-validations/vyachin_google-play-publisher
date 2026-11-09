@@ -428,7 +428,7 @@ and update the matching behavior/error document under `docs/`.
 
 ### Confirmed findings
 
-- [ ] **R11 — P1: Redact secrets that cross the debug capture boundary.**
+- [x] **R11 — P1: Redact secrets that cross the debug capture boundary.**
   Location: [internal/play/transport.go](internal/play/transport.go), `captureBody`,
   `secretJSON`, and `redact`.
   Capture truncates the input to 4 KiB + 1 byte before redaction. The regular expression

@@ -2,12 +2,13 @@ package play
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // maxLoggedBody limits how much of an HTTP body is written to the debug log.
@@ -93,7 +94,7 @@ func captureBody(body io.ReadCloser, contentLength int64, contentType string) (s
 	data, err := io.ReadAll(io.LimitReader(body, maxLoggedBody+1))
 	if err != nil {
 		// Replay the consumed bytes, then the original error.
-		return redact(data), &replayReadCloser{
+		return redact(data, true), &replayReadCloser{
 			reader: io.MultiReader(bytes.NewReader(data), errorReader{err}),
 			closer: body,
 		}
@@ -101,14 +102,14 @@ func captureBody(body io.ReadCloser, contentLength int64, contentType string) (s
 	if len(data) > maxLoggedBody {
 		// The body is larger than the log budget: replay the captured prefix
 		// and continue reading the rest from the original body.
-		return redact(data), &replayReadCloser{
+		return redact(data, true), &replayReadCloser{
 			reader: io.MultiReader(bytes.NewReader(data), body),
 			closer: body,
 		}
 	}
 
 	_ = body.Close()
-	return redact(data), io.NopCloser(bytes.NewReader(data))
+	return redact(data, false), io.NopCloser(bytes.NewReader(data))
 }
 
 // replayReadCloser replays captured bytes and closes the original body.
@@ -135,12 +136,122 @@ func requestID(resp *http.Response) string {
 	return ""
 }
 
-var secretJSON = regexp.MustCompile(`"(private_key|client_secret|refresh_token|access_token)"\s*:\s*"[^"]*"`)
+// secretKeys are JSON fields whose values must never reach a log.
+var secretKeys = map[string]bool{
+	"private_key":   true,
+	"client_secret": true,
+	"refresh_token": true,
+	"access_token":  true,
+}
 
-func redact(data []byte) string {
-	s := secretJSON.ReplaceAllString(string(data), `"$1":"[redacted]"`)
-	if len(s) > maxLoggedBody {
-		return s[:maxLoggedBody] + "...(truncated)"
+// redact returns a log-safe copy of a possibly truncated JSON body. Values of
+// secret keys are replaced with [redacted], including values cut off by the
+// capture limit and values containing escaped quotes. When safe redaction
+// cannot be established, it returns an empty string and the caller logs no
+// body at all.
+func redact(data []byte, truncated bool) string {
+	out, safe := redactJSON(data)
+	if !safe {
+		return ""
 	}
-	return s
+	if len(out) > maxLoggedBody {
+		out = truncateUTF8(out, maxLoggedBody)
+		truncated = true
+	}
+	if truncated {
+		out += "...(truncated)"
+	}
+	return out
+}
+
+// redactJSON scans JSON string tokens instead of matching secret keys with a
+// regular expression, so escaped quotes and a truncated value are handled
+// correctly. It reports false when a secret key is followed by something that
+// cannot be redacted safely, for example an unquoted value.
+func redactJSON(data []byte) (string, bool) {
+	var out bytes.Buffer
+	out.Grow(len(data))
+
+	awaitSecret := false
+	i := 0
+	for i < len(data) {
+		if data[i] != '"' {
+			if awaitSecret {
+				if c := data[i]; !isJSONSpace(c) && c != ':' {
+					return "", false
+				}
+			}
+			out.WriteByte(data[i])
+			i++
+			continue
+		}
+
+		end, closed := scanJSONString(data, i)
+		if !closed {
+			if awaitSecret {
+				out.WriteString(`"[redacted]"`)
+			} else {
+				out.Write(data[i:])
+			}
+			return out.String(), true
+		}
+
+		if awaitSecret {
+			out.WriteString(`"[redacted]"`)
+			awaitSecret = false
+			i = end
+			continue
+		}
+
+		out.Write(data[i:end])
+		// A closed string is a key when the next non-space byte is a colon.
+		j := end
+		for j < len(data) && isJSONSpace(data[j]) {
+			j++
+		}
+		if j < len(data) && data[j] == ':' {
+			var key string
+			if err := json.Unmarshal(data[i:end], &key); err != nil {
+				// The key cannot be classified, so the body cannot be
+				// redacted safely.
+				return "", false
+			}
+			if secretKeys[key] {
+				awaitSecret = true
+			}
+		}
+		i = end
+	}
+	return out.String(), true
+}
+
+// scanJSONString returns the index just past the closing quote of the JSON
+// string starting at i. The second result is false when the string is cut off.
+func scanJSONString(data []byte, i int) (int, bool) {
+	j := i + 1
+	for j < len(data) {
+		switch data[j] {
+		case '\\':
+			j += 2
+		case '"':
+			return j + 1, true
+		default:
+			j++
+		}
+	}
+	return len(data), false
+}
+
+func isJSONSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+func truncateUTF8(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
 }
