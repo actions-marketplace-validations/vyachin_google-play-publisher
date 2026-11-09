@@ -273,6 +273,11 @@ an already running recovery and keeps exit code 130.
   codes.
 - **Client tests:** `httptest.Server` + `option.WithEndpoint` + a fake token source; we assert
   the call sequence, retry policy and the mapping of `googleapi.Error` to exit codes.
+- **CLI/adapter regression tests:** a local `httptest.Server` receives a complete publish
+  sequence through the real Play adapter. Canceling the context after the commit request
+  reaches the server, while withholding its response, must return code 130, preserve the
+  unknown-state diagnostic in text and JSON, and send no further requests (including edit
+  deletion). These tests need no credentials and run in the default suite.
 - **Error golden tests:** fixtures of real Play responses (400/403/404/409) → expected message
   and code.
 - **Integration tests:** a dedicated test app and internal track, gated by environment
