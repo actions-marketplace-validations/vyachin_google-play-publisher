@@ -127,6 +127,8 @@ for publication" inside a CI step.
 ([Uploading Files](https://developers.google.com/android-publisher/upload)):
 
 - AABs use resumable uploads; chunks are multiples of 256 KiB;
+- the media is declared as `application/octet-stream`; an AAB is a ZIP archive, so letting the
+  client sniff the type sends `application/zip`, which Play rejects with HTTP 400;
 - an upload session has a limited lifetime; on `404`/`410` the upload must be restarted;
 - Google recommends increasing the HTTP timeout for `bundles.upload` (about 2 minutes);
 - the response contains `versionCode`, `sha1`, `sha256` — log them and return them in JSON.

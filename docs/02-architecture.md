@@ -126,8 +126,12 @@ only after everything else has been checked.
 
 ### Upload
 
-- `Media` with `googleapi.ChunkSize(8 MiB)` and `googleapi.ChunkRetryDeadline(30 s)`: files
-  smaller than one chunk are sent as a multipart request, larger ones as resumable chunks;
+- `Media` with `googleapi.ContentType("application/octet-stream")`,
+  `googleapi.ChunkSize(8 MiB)` and `googleapi.ChunkRetryDeadline(30 s)`: files smaller than
+  one chunk are sent as a multipart request, larger ones as resumable chunks;
+- the media type is explicit: an AAB is a ZIP archive, so content sniffing would declare
+  `application/zip` and Play rejects the upload with `Media type 'application/zip' is not
+  supported. (HTTP 400)`;
 - progress goes through `ProgressUpdater`, `INFO` every 5% (more detail in debug), so CI does
   not look stuck;
 - after the response, compare the returned `sha256` with the inspected value and log

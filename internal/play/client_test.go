@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -301,6 +303,84 @@ func TestUploadBundleResumable(t *testing.T) {
 	if info.VersionCode != 42 {
 		t.Fatalf("unexpected bundle info: %#v", info)
 	}
+}
+
+// TestUploadBundleMediaType pins the media type of the uploaded AAB. An AAB is
+// a ZIP archive, so content sniffing yields application/zip, which Play rejects
+// with "Media type 'application/zip' is not supported." (HTTP 400). The media
+// must always be declared as application/octet-stream.
+func TestUploadBundleMediaType(t *testing.T) {
+	// ZIP local file header: enough for http.DetectContentType to sniff
+	// application/zip.
+	zipMagic := []byte("PK\x03\x04")
+
+	t.Run("multipart", func(t *testing.T) {
+		var parts []string
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.URL.Query().Get("uploadType"); got != "multipart" {
+				t.Errorf("uploadType = %q, want multipart", got)
+			}
+			mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || mediaType != "multipart/related" {
+				t.Fatalf("content type = %q (err %v)", r.Header.Get("Content-Type"), err)
+			}
+			mr := multipart.NewReader(r.Body, params["boundary"])
+			for {
+				part, err := mr.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("read part: %v", err)
+				}
+				parts = append(parts, part.Header.Get("Content-Type"))
+				_, _ = io.Copy(io.Discard, part)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"versionCode":42,"sha1":"sha1-value","sha256":"sha256-value"}`)
+		})
+
+		client, _ := newClient(t, h)
+		payload := append(append([]byte{}, zipMagic...), []byte("fake-aab")...)
+		if _, err := client.UploadBundle(context.Background(), "com.example.app", "edit-1",
+			bytes.NewReader(payload), int64(len(payload))); err != nil {
+			t.Fatalf("UploadBundle: %v", err)
+		}
+
+		if len(parts) != 2 {
+			t.Fatalf("parts = %d, want 2", len(parts))
+		}
+		if parts[1] != "application/octet-stream" {
+			t.Errorf("media content type = %q, want application/octet-stream", parts[1])
+		}
+	})
+
+	t.Run("resumable", func(t *testing.T) {
+		var gotType string
+		mux := http.NewServeMux()
+		mux.HandleFunc("/upload/", func(w http.ResponseWriter, r *http.Request) {
+			gotType = r.Header.Get("X-Upload-Content-Type")
+			w.Header().Set("Location", "http://"+r.Host+"/session/1")
+			w.WriteHeader(http.StatusOK)
+		})
+		mux.HandleFunc("/session/1", func(w http.ResponseWriter, r *http.Request) {
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"versionCode":42,"sha1":"sha1-value","sha256":"sha256-value"}`)
+		})
+
+		client, _ := newClient(t, mux)
+		payload := make([]byte, 8<<20+1)
+		copy(payload, zipMagic)
+		if _, err := client.UploadBundle(context.Background(), "com.example.app", "edit-1",
+			bytes.NewReader(payload), int64(len(payload))); err != nil {
+			t.Fatalf("UploadBundle: %v", err)
+		}
+
+		if gotType != "application/octet-stream" {
+			t.Errorf("X-Upload-Content-Type = %q, want application/octet-stream", gotType)
+		}
+	})
 }
 
 // parseContentRange parses "bytes 0-8388607/*" or "bytes 0-8388607/9437184".

@@ -213,7 +213,11 @@ func (c *Client) DeleteEdit(ctx context.Context, pkg, editID string) error {
 // UploadBundle uploads an AAB to an edit and returns its version code and hashes.
 func (c *Client) UploadBundle(ctx context.Context, pkg, editID string, r io.Reader, size int64) (BundleInfo, error) {
 	call := c.svc.Edits.Bundles.Upload(pkg, editID).Context(ctx)
+	// An AAB is a ZIP archive: content sniffing would declare application/zip
+	// and Play rejects it with "Media type 'application/zip' is not supported."
+	// (HTTP 400). bundles.upload expects application/octet-stream.
 	call.Media(r,
+		googleapi.ContentType("application/octet-stream"),
 		googleapi.ChunkSize(c.chunkSize),
 		googleapi.ChunkRetryDeadline(c.chunkRetryWindow),
 	)

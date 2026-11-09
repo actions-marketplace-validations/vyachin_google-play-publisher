@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- AAB uploads declare `application/octet-stream` as the media type. Content sniffing
+  classified the ZIP-based bundle as `application/zip` and Play rejected the upload with
+  `Media type 'application/zip' is not supported. (HTTP 400)`.
+
 ## v0.0.3 — 2026-11-09
 
 ### Fixed
