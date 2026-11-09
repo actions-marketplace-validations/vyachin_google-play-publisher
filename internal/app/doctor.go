@@ -53,11 +53,14 @@ func Doctor(ctx context.Context, api play.API, opts DoctorOptions) ([]Check, err
 		return checks, nil
 	}
 
-	info, err := artifact.Inspect(opts.AABPath)
+	bundle, err := artifact.Open(opts.AABPath)
 	if err != nil {
 		checks = append(checks, Check{Name: "artifact", Detail: err.Error()})
 		return checks, err
 	}
+	defer func() { _ = bundle.Close() }()
+
+	info := bundle.Info
 	checks = append(checks, Check{
 		Name:   "artifact",
 		OK:     true,
@@ -73,13 +76,27 @@ func Doctor(ctx context.Context, api play.API, opts DoctorOptions) ([]Check, err
 	}
 	checks = append(checks, Check{Name: "signature", OK: true, Detail: "JAR signature present"})
 
+	// Doctor checks the same manifest identity as publish: a bundle for
+	// another application must not be reported as ready for this one.
+	resolved, err := validateIdentity(bundle.Identity, opts.Package, 0, nil)
+	if err != nil {
+		checks = append(checks, Check{Name: "identity", Detail: err.Error()})
+		return checks, err
+	}
+	checks = append(checks, Check{
+		Name: "identity",
+		OK:   true,
+		Detail: fmt.Sprintf("applicationId %s, versionCode %d, versionName %s",
+			resolved.Package, resolved.VersionCode, resolved.VersionName),
+	})
+
 	if opts.MetadataPath != "" {
 		meta, err := artifact.ReadMetadata(opts.MetadataPath)
 		if err != nil {
 			checks = append(checks, Check{Name: "metadata", Detail: err.Error()})
 			return checks, err
 		}
-		if err := meta.VerifyPackage(opts.Package); err != nil {
+		if _, err := validateIdentity(bundle.Identity, opts.Package, 0, &meta); err != nil {
 			checks = append(checks, Check{Name: "metadata", Detail: err.Error()})
 			return checks, err
 		}

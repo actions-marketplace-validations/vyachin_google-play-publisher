@@ -337,9 +337,11 @@ auditing:
     path: ${{ steps.play.outputs.result-file }}
 ```
 
-`result-file` is written even when the CLI fails after rendering the error object. `version-code`,
-`edit-id`, `review`, `skipped`, `manual-action` and `error-code` are derived with `jq`; when
-`jq` is unavailable the action keeps the raw file, omits those outputs and emits a warning.
+`result-file` is written even when the CLI fails after rendering the error object. Each
+invocation creates a fresh directory under `$RUNNER_TEMP`, so two publish steps in the same job
+expose distinct result files and neither overwrites the other. `version-code`, `edit-id`,
+`review`, `skipped`, `manual-action` and `error-code` are derived with `jq`; when `jq` is
+unavailable the action keeps the raw file, omits those outputs and emits a warning.
 
 ## Manual review and exit code 8
 

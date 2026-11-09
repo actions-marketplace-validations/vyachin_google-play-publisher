@@ -91,35 +91,66 @@ After exhaustion — code 6 and a message with the last error and the number of 
 blind retry is dangerous: the edit may already be closed, and a repeated commit returns an
 error that is easy to mistake for a failure.
 
+Only failures that may hide an applied edit are reconciled. The Play adapter marks transport
+failures and 5xx answers (`play.AmbiguousFailure`). Token retrieval failures, Play validation
+rejections and the other definitive outcomes are returned unchanged, so a `versionCode` that
+appears on the track through another operation never turns a rejected commit into success.
+
 Algorithm:
 
 ```
-commit → error?
-  → "changes cannot be sent for review automatically"?
-      → retry once with changesNotSentForReview=true
-         success → saved; review=notSent; exit code 8
-  → otherwise request track releases (read-only)
-      versionCode present?
-          yes → success; review comes from the options of the request
-                actually sent; exit code 0
-          no  → retry commit once if the error is transient
-                (not for an invalid edit, not after a canceled context)
-                  → verify again
-                      versionCode present → success, code 0
-                      still absent → code 6, attach editId
+commit -> error?
+  -> "changes cannot be sent for review automatically"?
+      -> retry once with changesNotSentForReview=true
+         success -> saved; review=notSent; exit code 8
+  -> ambiguous failure (typed transport or 5xx)?
+      no  -> return the error; delete the edit
+      yes -> request track releases (read-only)
+          versionCode present?
+              yes -> read releaseLifecycleState:
+                     NOT_SENT_FOR_REVIEW -> saved without review
+                         -> review=notSent; exit code 8
+                            (explicit --changes-not-sent-for-review -> 0,
+                             --status draft -> 0)
+                     otherwise -> success; review comes from the options of
+                         the request actually sent; exit code 0
+                     (an unset/UNSPECIFIED state keeps the historical
+                      version-presence rule and logs a warning)
+              no  -> retry commit once if the failure is transient
+                     (not after a canceled context)
+                       -> verify again
+                           versionCode present -> success or code 8 as above
+                           still absent -> delete the edit; return the error
 ```
 
-Every ambiguous attempt is reconciled before the tool decides that it failed: a retry that
-the server applied but whose response was lost is recognized by the following read and the
-edit is not deleted.
+Every ambiguous attempt is reconciled before the tool decides that it failed. The reported
+`review` value comes from the `commit` options that were actually used plus the observed
+lifecycle state:
 
-The reported `review` value always comes from the `commit` options that were actually used —
-including the automatic `changesNotSentForReview=true` fallback and ambiguous attempts
-resolved by verification. An automatic fallback that saved the changes returns code 8 even
-when the retry itself succeeded; an explicit `--changes-not-sent-for-review` returns 0.
+- the automatic `changesNotSentForReview=true` fallback reports `notSent` and code 8;
+- an explicit `--changes-not-sent-for-review` reports `notSent` and code 0;
+- a release observed in `NOT_SENT_FOR_REVIEW` is never reported as `sent`; without the
+  explicit save flag the command returns code 8 with the Play Console instruction.
 
-If the state check itself is unavailable (network), the tool returns code 6 and does **not**
-claim that the publication failed: the message says "state unknown, check the track".
+Cleanup follows the verified outcome:
+
+| Outcome | Meaning | Edit |
+| --- | --- | --- |
+| `committed` | Play confirmed the release | kept |
+| `notCommitted` | The failure is definitive, or the version is absent after reconciliation | deleted best-effort |
+| `unknown` | The track could not be read after an ambiguous failure | kept |
+
+For `unknown` the tool exits with code 6 and reports the package, track, version code and edit
+ID. It does not claim that the publication failed.
+
+A signal keeps exit code 130: no further read is attempted, the edit is kept, and the process
+exits promptly. The normal pre-commit cleanup is unchanged: an edit deleted before any commit
+attempt is not affected by these rules.
+
+If the operation deadline expired before the reconciliation read, a separate bounded recovery
+budget of 15 s is used, so a response lost at the deadline is still recognized. The budget is
+shared by the recovery attempts. It is parented by the signal context, not by the expired
+operation context: a signal interrupts an already running recovery and keeps exit code 130.
 
 ## 5. User-facing messages
 

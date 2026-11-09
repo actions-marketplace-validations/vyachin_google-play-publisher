@@ -23,6 +23,11 @@ import (
 
 func runWithAPI(t *testing.T, api play.API, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
+	return runWithAPIAndContext(context.Background(), t, api, args...)
+}
+
+func runWithAPIAndContext(ctx context.Context, t *testing.T, api play.API, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
 
 	var out, errOut bytes.Buffer
 	app := &cli.App{
@@ -35,7 +40,7 @@ func runWithAPI(t *testing.T, api play.API, args ...string) (stdout, stderr stri
 		},
 	}
 
-	code = cli.Execute(context.Background(), app, args)
+	code = cli.Execute(ctx, app, args)
 	return out.String(), errOut.String(), code
 }
 

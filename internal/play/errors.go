@@ -33,6 +33,29 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s (HTTP %d)", e.Message, e.Status)
 }
 
+// AmbiguousFailure marks a failure whose request may have been applied by Play
+// even though no definitive response was received. Callers that mutate state
+// must reconcile these failures instead of trusting the error.
+//
+// Token retrieval failures are deliberately not marked: they happen before the
+// API request is sent, so the mutation cannot have been applied.
+type AmbiguousFailure struct {
+	Err error
+}
+
+// Error implements the error interface.
+func (e *AmbiguousFailure) Error() string { return e.Err.Error() }
+
+// Unwrap exposes the original failure.
+func (e *AmbiguousFailure) Unwrap() error { return e.Err }
+
+// IsAmbiguous reports whether err marks a request whose effect may have been
+// applied by Play.
+func IsAmbiguous(err error) bool {
+	var ambiguous *AmbiguousFailure
+	return errors.As(err, &ambiguous)
+}
+
 // mapError converts Google API and transport errors into coded errors with hints.
 func mapError(err error) error {
 	if err == nil {
@@ -46,11 +69,19 @@ func mapError(err error) error {
 		if msg == "" {
 			msg = gerr.Error()
 		}
-		mapped := exitcode.Wrap(code, &APIError{
+		apiErr := &APIError{
 			Status:  gerr.Code,
 			Reason:  apiReason(gerr),
 			Message: msg,
-		})
+		}
+		var cause error = apiErr
+		// A server-side failure can happen before or after Play applied the
+		// mutation, so the outcome is ambiguous. Client-side rejections are
+		// definitive.
+		if gerr.Code >= 500 {
+			cause = &AmbiguousFailure{Err: apiErr}
+		}
+		mapped := exitcode.Wrap(code, cause)
 		return exitcode.WithHint(mapped, hintFor(code))
 	}
 
@@ -73,7 +104,10 @@ func mapError(err error) error {
 		errors.Is(err, syscall.ENETUNREACH),
 		errors.Is(err, syscall.EPIPE),
 		isTimeout(err):
-		return exitcode.WithHint(exitcode.Wrap(exitcode.Transient, err), hintFor(exitcode.Transient))
+		return exitcode.WithHint(
+			exitcode.Wrap(exitcode.Transient, &AmbiguousFailure{Err: err}),
+			hintFor(exitcode.Transient),
+		)
 	}
 
 	// Token requests made by the context-aware auth transport surface as

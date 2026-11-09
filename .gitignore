@@ -1,6 +1,7 @@
 /bin/
 /dist/
 /coverage.out
+/.cache/
 *.test
 .DS_Store
 .idea/

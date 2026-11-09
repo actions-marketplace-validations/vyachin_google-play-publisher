@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vyachin/google-play-publisher/internal/app"
 	"github.com/vyachin/google-play-publisher/internal/artifact"
@@ -322,7 +323,7 @@ func TestPublishManualReviewAfterTransientRetry(t *testing.T) {
 			case 1:
 				return exitcode.Errorf(exitcode.ManualAction, "changes cannot be sent for review automatically")
 			case 2:
-				return exitcode.Errorf(exitcode.Transient, "timeout")
+				return ambiguousTimeout()
 			default:
 				return nil
 			}
@@ -361,7 +362,7 @@ func TestPublishManualReviewVerifiedWithoutReview(t *testing.T) {
 			if attempts == 1 {
 				return exitcode.Errorf(exitcode.ManualAction, "changes cannot be sent for review automatically")
 			}
-			return exitcode.Errorf(exitcode.Transient, "timeout")
+			return ambiguousTimeout()
 		},
 	}
 	publisher := app.NewPublisher(fake, nil)
@@ -386,10 +387,10 @@ func TestPublishVerifiesFinalTransientRetry(t *testing.T) {
 			if releases <= 2 {
 				return nil, nil // preflight and the first reconciliation
 			}
-			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}, State: play.LifecycleInReview}}, nil
 		},
 		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
-			return exitcode.Errorf(exitcode.Transient, "timeout")
+			return ambiguousTimeout()
 		},
 	}
 	publisher := app.NewPublisher(fake, nil)
@@ -420,7 +421,7 @@ func TestPublishUnknownCommitState(t *testing.T) {
 			return nil, exitcode.Errorf(exitcode.Transient, "network down")
 		},
 		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
-			return exitcode.Errorf(exitcode.Transient, "timeout")
+			return ambiguousTimeout()
 		},
 	}
 	publisher := app.NewPublisher(fake, nil)
@@ -434,11 +435,14 @@ func TestPublishUnknownCommitState(t *testing.T) {
 	}
 
 	var coded *exitcode.Error
-	if !errors.As(err, &coded) || !strings.Contains(coded.Hint, "state is unknown") {
+	if !errors.As(err, &coded) || !strings.Contains(coded.Hint, "check the track") {
 		t.Fatalf("expected the unknown-state hint, got %v", err)
 	}
 	if len(fake.CommitOptions) != 1 {
 		t.Fatalf("commit attempts = %d, want 1", len(fake.CommitOptions))
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("an unknown commit must keep the edit: %v", fake.DeletedEditIDs)
 	}
 }
 
@@ -450,10 +454,10 @@ func TestPublishVerifiesAmbiguousCommit(t *testing.T) {
 				preflight = false
 				return nil, nil
 			}
-			return []play.ReleaseSummary{{VersionCodes: []int64{42}}}, nil
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}, State: play.LifecycleInReview}}, nil
 		},
 		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
-			return exitcode.Errorf(exitcode.Transient, "timeout")
+			return ambiguousTimeout()
 		},
 	}
 	publisher := app.NewPublisher(fake, nil)
@@ -473,7 +477,7 @@ func TestPublishVerifiesAmbiguousCommit(t *testing.T) {
 func TestPublishRetriesTransientCommit(t *testing.T) {
 	fake := &playtest.Fake{
 		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
-			return exitcode.Errorf(exitcode.Transient, "timeout")
+			return ambiguousTimeout()
 		},
 	}
 	publisher := app.NewPublisher(fake, nil)
@@ -865,5 +869,349 @@ func TestPrepareValidatesExpectedTag(t *testing.T) {
 				t.Fatalf("code = %d, want %d (err: %v)", got, test.want, err)
 			}
 		})
+	}
+}
+
+func TestPublishDefinitiveCommitRejectionIsNotReconciled(t *testing.T) {
+	trackReads := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			trackReads++
+			if trackReads == 1 {
+				return nil, nil // preflight
+			}
+			// A version that appeared through another operation must not turn
+			// the rejected commit into success.
+			return []play.ReleaseSummary{{VersionCodes: []int64{42}, State: play.LifecyclePublished}}, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			return exitcode.Errorf(exitcode.Conflict, "conflict")
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	result, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if err == nil {
+		t.Fatal("expected the conflict")
+	}
+	if got := exitcode.From(err); got != exitcode.Conflict {
+		t.Fatalf("code = %d, want %d (err: %v)", got, exitcode.Conflict, err)
+	}
+	if result.VersionCode != 0 || result.Review != "" {
+		t.Fatalf("a rejected commit must not report a release: %#v", result)
+	}
+	if trackReads != 1 {
+		t.Fatalf("a definitive rejection must not be reconciled, track reads = %d", trackReads)
+	}
+	if len(fake.DeletedEditIDs) != 1 {
+		t.Fatalf("a rejected edit must be deleted: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPublishAmbiguousCommitObservedNotSent(t *testing.T) {
+	preflight := true
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			if preflight {
+				preflight = false
+				return nil, nil
+			}
+			return []play.ReleaseSummary{{
+				VersionCodes: []int64{42},
+				State:        play.LifecycleNotSentForReview,
+			}}, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			return ambiguousTimeout()
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	result, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if got := exitcode.From(err); got != exitcode.ManualAction {
+		t.Fatalf("code = %d, want %d (err: %v)", got, exitcode.ManualAction, err)
+	}
+	if result.Review != app.ReviewNotSent || result.VersionCode != 42 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	var coded *exitcode.Error
+	if !errors.As(err, &coded) || !strings.Contains(coded.Hint, "Play Console") {
+		t.Fatalf("expected the manual-action hint, got %v", err)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("a saved release must keep the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPublishAmbiguousCommitObservedDraft(t *testing.T) {
+	preflight := true
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			if preflight {
+				preflight = false
+				return nil, nil
+			}
+			return []play.ReleaseSummary{{
+				VersionCodes: []int64{42},
+				State:        play.LifecycleNotSentForReview,
+			}}, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			return ambiguousTimeout()
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	opts := baseOptions(writeAAB(t))
+	opts.Status = "draft"
+	result, err := publisher.Publish(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if result.Review != app.ReviewNotSent {
+		t.Fatalf("review = %q, want %q", result.Review, app.ReviewNotSent)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("a saved draft must keep the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPublishExplicitSaveNotSentStaysSuccess(t *testing.T) {
+	preflight := true
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			if preflight {
+				preflight = false
+				return nil, nil
+			}
+			return []play.ReleaseSummary{{
+				VersionCodes: []int64{42},
+				State:        play.LifecycleNotSentForReview,
+			}}, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			return ambiguousTimeout()
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	opts := baseOptions(writeAAB(t))
+	opts.ChangesNotSentForReview = true
+	result, err := publisher.Publish(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if result.Review != app.ReviewNotSent {
+		t.Fatalf("review = %q, want %q", result.Review, app.ReviewNotSent)
+	}
+}
+
+func TestPublishCommitRecoversAfterDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	trackReads := 0
+	recovered := false
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(readCtx context.Context, _, _ string) ([]play.ReleaseSummary, error) {
+			trackReads++
+			if trackReads == 1 {
+				return nil, nil // preflight
+			}
+			if readCtx.Err() != nil {
+				return nil, readCtx.Err()
+			}
+			recovered = true
+			return []play.ReleaseSummary{{
+				VersionCodes: []int64{42},
+				State:        play.LifecycleInReview,
+			}}, nil
+		},
+		CommitEditFunc: func(commitCtx context.Context, _, _ string, _ play.CommitOptions) error {
+			<-commitCtx.Done()
+			return ambiguousTimeout()
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	result, err := publisher.Publish(ctx, baseOptions(writeAAB(t)))
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if !recovered {
+		t.Fatal("expected reconciliation under the recovery budget")
+	}
+	if result.Review != app.ReviewSent || result.VersionCode != 42 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("a recovered release must keep the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPublishCancelledCommitKeepsEdit(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	trackReads := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			trackReads++
+			return nil, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			cancel()
+			return ambiguousTimeout()
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	_, err := publisher.Publish(ctx, baseOptions(writeAAB(t)))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := exitcode.From(err); got != exitcode.Transient {
+		t.Fatalf("code = %d, want %d", got, exitcode.Transient)
+	}
+	if trackReads != 1 {
+		t.Fatalf("a canceled commit must not be reconciled, track reads = %d", trackReads)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("a canceled commit must keep the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
+// ambiguousTimeout builds the error that the Play adapter produces for a
+// transport failure whose commit may have been applied by the server.
+func ambiguousTimeout() error {
+	return exitcode.Wrap(exitcode.Transient,
+		&play.AmbiguousFailure{Err: errors.New("timeout")})
+}
+
+func TestPublishUntypedTransientCommitIsNotReconciled(t *testing.T) {
+	trackReads := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			trackReads++
+			return nil, nil
+		},
+		CommitEditFunc: func(context.Context, string, string, play.CommitOptions) error {
+			// Not marked as ambiguous by the adapter: it cannot hide an
+			// applied edit, so reconciliation must not run.
+			return exitcode.Errorf(exitcode.Transient, "injected")
+		},
+	}
+	publisher := app.NewPublisher(fake, nil)
+
+	_, err := publisher.Publish(context.Background(), baseOptions(writeAAB(t)))
+	if got := exitcode.From(err); got != exitcode.Transient {
+		t.Fatalf("code = %d, want %d", got, exitcode.Transient)
+	}
+	if trackReads != 1 {
+		t.Fatalf("an untyped transient failure must not be reconciled, track reads = %d", trackReads)
+	}
+	if len(fake.DeletedEditIDs) != 1 {
+		t.Fatalf("a failed commit must delete the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPublishSignalInterruptsRecovery(t *testing.T) {
+	opCtx, opCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer opCancel()
+	signalCtx, signal := context.WithCancel(context.Background())
+	defer signal()
+
+	trackReads := 0
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(readCtx context.Context, _, _ string) ([]play.ReleaseSummary, error) {
+			trackReads++
+			switch trackReads {
+			case 1:
+				return nil, nil // preflight
+			case 2:
+				return nil, readCtx.Err() // the expired operation context
+			default:
+				signal()
+				<-readCtx.Done()
+				if !errors.Is(readCtx.Err(), context.Canceled) {
+					t.Errorf("recovery was not interrupted by the signal: %v", readCtx.Err())
+				}
+				return nil, readCtx.Err()
+			}
+		},
+		CommitEditFunc: func(commitCtx context.Context, _, _ string, _ play.CommitOptions) error {
+			<-commitCtx.Done()
+			return ambiguousTimeout()
+		},
+	}
+	publisher := app.NewPublisher(fake, nil, app.WithRecoveryBase(signalCtx))
+
+	_, err := publisher.Publish(opCtx, baseOptions(writeAAB(t)))
+	if err == nil {
+		t.Fatal("expected an unknown-state error")
+	}
+	if got := exitcode.From(err); got != exitcode.Transient {
+		t.Fatalf("code = %d, want %d", got, exitcode.Transient)
+	}
+	if trackReads != 3 {
+		t.Fatalf("track reads = %d, want 3 (preflight, expired read, recovery)", trackReads)
+	}
+	if len(fake.DeletedEditIDs) != 0 {
+		t.Fatalf("an interrupted recovery must keep the edit: %v", fake.DeletedEditIDs)
+	}
+}
+
+func TestPreparedRejectsReuseAfterClose(t *testing.T) {
+	fake := &playtest.Fake{}
+	publisher := app.NewPublisher(fake, nil)
+
+	prepared, err := app.Prepare(baseOptions(writeAAB(t)))
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if err := prepared.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := prepared.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+
+	_, err = publisher.PublishPrepared(context.Background(), prepared)
+	if got := exitcode.From(err); got != exitcode.Internal {
+		t.Fatalf("code = %d, want %d (err: %v)", got, exitcode.Internal, err)
+	}
+	if len(fake.Calls) != 0 {
+		t.Fatalf("a closed Prepared must fail before any API call: %v", fake.Calls)
+	}
+}
+
+func TestPreparedRejectsSecondPublish(t *testing.T) {
+	fake := &playtest.Fake{}
+	publisher := app.NewPublisher(fake, nil)
+
+	prepared, err := app.Prepare(baseOptions(writeAAB(t)))
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if _, err := publisher.PublishPrepared(context.Background(), prepared); err != nil {
+		t.Fatalf("first PublishPrepared: %v", err)
+	}
+	if _, err := publisher.PublishPrepared(context.Background(), prepared); err == nil {
+		t.Fatal("expected the second PublishPrepared to fail")
+	} else if got := exitcode.From(err); got != exitcode.Internal {
+		t.Fatalf("code = %d, want %d", got, exitcode.Internal)
+	}
+	if err := prepared.Close(); err != nil {
+		t.Fatalf("Close after publishing: %v", err)
+	}
+
+	edits := 0
+	for _, call := range fake.Calls {
+		if call == "CreateEdit" {
+			edits++
+		}
+	}
+	if edits != 1 {
+		t.Fatalf("edits created = %d, want 1", edits)
 	}
 }

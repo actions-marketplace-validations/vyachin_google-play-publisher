@@ -3,7 +3,7 @@
 **Status:** v0.0.4 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
 by agreement; S9 is post-MVP. S10 (GitHub Actions usability) is implemented and released as
 v0.0.5; the Gunclub workflow switch is an external follow-up and live verification waits for
-S0.
+S0. The post-S10 review (R16–R19, I7–I9) is analyzed and scheduled as S11.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -34,6 +34,7 @@ debug mode, machine-readable output and an extensible command structure.
 | S8.2 | v0.0.3: follow-up review fixes (R11–R15, I5–I6) | — | v0.0.3 published with verified checksums |
 | S9 | After the MVP | 3–5 d | `rollout`/`promote` |
 | S10 | GitHub Actions setup/publish actions and AAB identity | 7.5–12 d | Actions tested without Play access; v0.0.5 released; Gunclub switch external |
+| S11 | Post-S10 review fixes: commit outcomes, doctor identity, action result files | 3.5–6 d | R16–R19 and I7–I9 fixed with tests/docs; v0.0.6 released |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -833,3 +834,337 @@ safe credentials; the publish action preserves CLI exit codes and exposes docume
 are verified against `v0.0.5`; local/stub and live verification statuses are recorded
 separately. The Gunclub workflow switch is an external follow-up because that repository is
 out of scope for changes in this task.
+
+## Post-S10 code review — 2026-11-09 [unplanned]
+
+Scope: publication recovery, CLI output, doctor validation, and repeated publish-action
+invocations. All items below remain open. The review passed `make test`, `make lint`, and
+`make test-race`; temporary tests outside the repository reproduced R16–R18 through a Go
+overlay. R19 was identified by code inspection. No live Play publication was performed.
+Each behavior fix must include regression tests and update the matching document in
+`docs/`; run `make fmt`, `make lint`, and `make test` when implementing it.
+
+**Status 2026-11-09:** R16–R19 and I7–I9 were re-checked against the working tree and all
+seven findings were confirmed; the analysis and the execution plan are in S11 below. The
+fixes are implemented locally with regression tests (see S11) and wait for the v0.0.6
+release.
+
+### Confirmed findings
+
+- [x] **R16 — P1: Do not turn a definitive commit rejection into publication success.**
+  Location: [internal/app/publish.go](internal/app/publish.go), `commit` and `isReleased`.
+  Reconciliation runs after definitive errors as well as ambiguous failures and treats
+  the presence of a version code as proof that the current operation succeeded. If another
+  operation puts the version on the track, a rejected commit can return success and
+  `review=sent` even when the observed lifecycle state is `NOT_SENT_FOR_REVIEW`.
+  Preserve definitive rejections; reconcile ambiguous transport/server failures and account
+  for the observed release lifecycle state without claiming an unverified submission.
+  Acceptance: a conflict followed by an externally appearing version remains an error;
+  an ambiguous commit cannot report `sent` solely from version presence when the observed
+  state is not sent for review; successful ambiguous-commit recovery remains covered.
+
+- [x] **R17 — P2: Preserve exactly one JSON object when doctor is interrupted.**
+  Location: [internal/cli/root.go](internal/cli/root.go), `Execute`.
+  Doctor writes its JSON result and returns `renderedError`, but cancellation replaces the
+  error and loses that marker. Execute then writes a second JSON object to stdout.
+  Preserve the output-rendered state independently of error replacement, or centralize final
+  JSON rendering. Acceptance: cancellation during `doctor --json` returns 130, writes exactly
+  one JSON object, and retains the available diagnostic checks.
+
+- [x] **R18 — P2: Check doctor inputs against the AAB manifest identity.**
+  Location: [internal/app/doctor.go](internal/app/doctor.go), artifact and metadata checks.
+  `artifact.Inspect` does not parse the manifest, so doctor accepts an AAB for a different
+  application. Metadata is checked against the package flag but not the AAB version code.
+  Use `artifact.Open`, compare package and metadata identity against the manifest, and share
+  local identity validation with publish where practical. Acceptance: reject wrong-package,
+  mismatched-version, missing-manifest, and malformed-manifest inputs; close the AAB on every
+  path and keep valid doctor runs working.
+
+- [x] **R19 — P2: Keep a separate result file for every publish-action invocation.**
+  Location: [scripts/publish.sh](scripts/publish.sh), `result_dir` and `result_file`.
+  Every invocation uses `$RUNNER_TEMP/google-play-publisher/result.json`. A second action in
+  the same job deletes and replaces the first result, so the earlier `result-file` output
+  points to another publication's JSON. Create an invocation-specific directory with
+  `mktemp -d` and preserve its result for downstream steps.
+  Acceptance: two sequential invocations with the same runner temporary root expose distinct
+  result paths, both original payloads remain readable, and temporary credentials are still
+  removed.
+
+### Additional improvements
+
+- [x] **I7 — P2: Model commit outcomes explicitly.**
+  Location: [internal/app/publish.go](internal/app/publish.go), commit recovery and cleanup.
+  Distinguish `committed`, `notCommitted`, and `unknown` instead of relying only on the
+  `committed` boolean. Define cleanup and reporting for each outcome so an unverified commit
+  is not treated as a confirmed rejection. Acceptance: tests cover successful commit,
+  definitive rejection, failed reconciliation, and the cleanup policy for unknown state;
+  document the chosen recovery policy in [the error guide](docs/05-errors.md).
+
+- [x] **I8 — P2: Define reconciliation behavior after the operation deadline expires.**
+  Location: [internal/app/publish.go](internal/app/publish.go), `commit`.
+  Reconciliation currently reuses the commit context, so a deadline-expired context cannot
+  perform the network check. Choose and document either a short separate recovery budget
+  or an explicit unknown-state result with the package, track, version code, and edit ID.
+  Acceptance: a commit response lost at the deadline follows the documented bounded recovery
+  policy, reports uncertainty accurately, and preserves signal cancellation semantics.
+
+- [x] **I9 — P2: Enforce the one-shot lifecycle of Prepared before networking.**
+  Location: [internal/app/publish.go](internal/app/publish.go), `Prepared.Close` and
+  `PublishPrepared`.
+  Closing Prepared leaves `valid` true. Reusing it can perform preflight and create an edit
+  before discovering the closed file. Track closed/consumed state shared by copies and reject
+  reuse before any API call. Acceptance: publishing a closed or already-consumed Prepared
+  fails locally without creating an edit; normal publication and repeated Close remain safe.
+
+## S11. Post-S10 review fixes [unplanned] — planned
+
+**Status 2026-11-09:** the seven review items were re-checked against the working tree
+(`f2117b4` plus the review notes) and all are confirmed. S11.0–S11.6 are implemented locally
+with regression tests and the local gate is green (82.1% coverage). v0.0.6 is not tagged yet,
+so the release step and the released-version pins remain open.
+
+**Goal:** close the post-S10 review, keep the documented CLI/exit-code contract accurate, and
+ship the fixes as v0.0.6.
+
+**Out of scope:** I3/S0 live verification (blocked by Play Console access), the Gunclub
+workflow switch (external repository), and S9 rollout/promote.
+
+### Analysis
+
+| Item | Priority | Confirmed in | Evidence |
+| --- | --- | --- | --- |
+| R16 | P1 | [internal/app/publish.go](internal/app/publish.go), `commit`, `isReleased` | Reconciliation runs for every commit error, and success is decided by version presence alone; the returned `review` comes from the request options, not the observed lifecycle state |
+| I7 | P2 | [internal/app/publish.go](internal/app/publish.go), `PublishPrepared`, `commit` | A single `committed` bool drives cleanup, so an unverified commit is deleted as if it were a rejection |
+| I8 | P2 | [internal/app/publish.go](internal/app/publish.go), `commit` | `isReleased` receives the commit context; after `DeadlineExceeded` reconciliation cannot read the track |
+| R17 | P2 | [internal/cli/root.go](internal/cli/root.go), `Execute`; [internal/cli/doctor.go](internal/cli/doctor.go), `runDoctor` | The cancellation branch replaces `err` after doctor returned `renderedError`, so a second JSON object is written |
+| R18 | P2 | [internal/app/doctor.go](internal/app/doctor.go), artifact/metadata checks | `artifact.Inspect` skips the manifest; metadata is compared with the flag only, never with the AAB version code |
+| R19 | P2 | [scripts/publish.sh](scripts/publish.sh), `result_dir`, `result_file` | The result path is fixed under `$RUNNER_TEMP`, so a later invocation overwrites the earlier payload |
+| I9 | P2 | [internal/app/publish.go](internal/app/publish.go), `Prepared.Close`, `PublishPrepared` | `valid` stays true after `Close`; a copy of `Prepared` shares only the file pointer, so reuse fails late with code 1 after an edit exists |
+
+Work grouping, chosen to avoid rewriting the same code twice:
+
+- **Group A — commit state machine (R16, I7, I8).** One code path, one documentation section
+  ([05-errors.md §4](docs/05-errors.md#4-ambiguous-commit)) and one test matrix. R16 and I7
+  are refactored together; I8 is a small follow-up on the same function.
+- **Group B — local validation (R18).** Reuses `artifact.Open` and extracts the identity checks
+  currently inlined in `Prepare`. The existing doctor fixtures build AABs without a manifest
+  (for example `signedAAB` in [internal/cli/doctor_test.go](internal/cli/doctor_test.go)), so
+  they must be updated together with the behavior.
+- **Group C — output contract (R17).** Only the top-level execution path in
+  [internal/cli/root.go](internal/cli/root.go); independent of Group A.
+- **Group D — action script (R19).** Shell-only, independent, testable without Go changes.
+- **Group E — `Prepared` lifecycle (I9).** Small and independent, but touches the type that
+  Group A also reads.
+
+### Decisions to settle in S11.0
+
+Recommended choices; the stage promotes them to `docs/` as each fix lands.
+
+- **D1 — definitive versus ambiguous commit failures (R16) — agreed.** Definitive failures
+  keep their exit code and skip reconciliation: usage (2), authentication (3), not found (4),
+  conflict or invalid edit (5), Play validation (7). Only failures typed by the Play adapter
+  as transport or server-side failures are reconciled: transient (6), and internal (1) only
+  when the error carries that transport marker. A token retrieval failure happens before the
+  commit request is sent, is not marked, and receives no reconciliation. The manual-review
+  refusal keeps the existing one-time `changesNotSentForReview=true` fallback. Implemented as
+  `play.AmbiguousFailure` / `play.IsAmbiguous`.
+- **D2 — observation rules (R16) — agreed with one exception.** Reconciliation evaluates the
+  version code together with the observed release lifecycle state. `PUBLISHED`/`IN_REVIEW`
+  mean success. Presence with `NOT_SENT_FOR_REVIEW` means saved without review: exit code 8,
+  `review=notSent` and the Play Console instruction. Exception: an explicit
+  `--changes-not-sent-for-review` keeps exit code 0 as the current contract requires, and an
+  explicit `--status draft` also stays 0. Presence with an `UNSPECIFIED` state keeps the
+  historical version-presence rule and logs a WARN that the state did not confirm the review
+  outcome; it is a compatibility fallback, not evidence of submission. Documented in
+  [05-errors.md §4](docs/05-errors.md#4-ambiguous-commit).
+- **D3 — explicit commit outcomes and cleanup (I7).** Replace the `committed` bool with
+  `committed`, `notCommitted` and `unknown`. Only `notCommitted` deletes the edit. `unknown`
+  keeps the edit (it may already be closed), reports code 6 with package, track, version code
+  and edit ID, and never emits a success object in `--json`.
+- **D4 — recovery budget after the deadline (I8) — agreed.** When the commit context is
+  expired, reconcile under a shared 15 s `context.WithTimeout` budget. The budget is parented
+  by the signal context, not by the expired operation context (`PublisherOption`
+  `WithRecoveryBase`), so a signal interrupts an already running recovery; a signal before
+  recovery keeps 130, performs no read and does not delete an edit with an unknown outcome.
+  Before the commit attempt the normal cleanup is unchanged. An exhausted budget is `unknown`
+  with package/track/versionCode/editID and keeps the edit.
+- **D5 — JSON rendering ownership (R17).** Track "output already rendered" independently of
+  error replacement in `Execute`, or centralize final JSON rendering so doctor cancellation
+  still yields exit code 130 and exactly one object with the collected checks.
+- **D6 — doctor identity (R18) — agreed.** Extract the local identity validation from
+  `Prepare` into a shared app helper; doctor opens the AAB with `artifact.Open`, requires
+  manifest identity when `--aab` is passed and compares `--package` and `--metadata` (package
+  and version code) against it. The API check stays first, and without `--aab` access and
+  track diagnostics are unchanged. The bundle is closed on every path.
+- **D7 — result files (R19).** Create an invocation directory with
+  `mktemp -d "$tmp_root/google-play-publisher.XXXXXX"`, keep `result.json` and the decoded
+  credentials inside it, and let the `EXIT` trap remove only credentials and stderr; the result
+  stays readable for downstream steps and `result-file` keeps its meaning.
+- **D8 — `Prepared` lifecycle (I9).** Share `valid`/`closed`/`consumed` state through a pointer
+  so copies agree; `Close` stays idempotent; `PublishPrepared` rejects zero, closed and
+  consumed values with code 1 before any API call and without creating an edit.
+
+### S11.0. Baseline and decisions — 0.5 d
+
+- [x] Re-run the local baseline: `make fmt`, `make lint`, `make test`, `make test-race`,
+      `make cover`, `scripts/setup_test.sh` and `scripts/publish_test.sh`; record the starting
+      coverage so the 80% gate can be compared after the fixes.
+- [x] Settle D1–D8 and keep them in this section until each behavior document is updated.
+- [x] Map the affected contracts: [05-errors.md §4](docs/05-errors.md#4-ambiguous-commit),
+      [03-cli-contract.md §5](docs/03-cli-contract.md#5-json-result) and
+      [§4](docs/03-cli-contract.md#4-exit-codes),
+      [03-cli-contract.md doctor](docs/03-cli-contract.md#google-play-publisher-doctor--mvp),
+      [07-github-actions.md § Outputs and artifacts](docs/07-github-actions.md#outputs-and-artifacts)
+      and the doctor sections of [README.md](README.md).
+
+**DoD:** every decision has one chosen option and one document that will record it; no code
+changes yet.
+
+### S11.1. Commit outcome model — R16 + I7 — 1–1.5 d
+
+- [x] Replace the `committed` bool and the deferred delete with an explicit outcome
+      (D3) shared by reporting and cleanup; only `notCommitted` deletes the edit.
+- [x] Reconcile only ambiguous failures (D1); a definitive rejection can no longer become
+      success when another operation puts the version on the track.
+- [x] Derive success and `review` from the request actually sent plus the observed lifecycle
+      state (D2); a release that exists but was not submitted returns code 8 with
+      `review=notSent` and the manual-submission hint.
+- [x] Return an `unknown` outcome with code 6, package, track, version code and edit ID when
+      reconciliation is inconclusive; keep the edit and emit no success object in `--json`.
+- [x] Extend the publish tests to set `ReleaseSummary.State` and cover: conflict plus an
+      externally appearing version (code 5, no success); ambiguous commit observed as
+      `NOT_SENT_FOR_REVIEW` (code 8, `notSent`, edit kept); ambiguous commit observed as
+      `IN_REVIEW`/`PUBLISHED` (code 0, `sent`); failed reconciliation (unknown, edit kept);
+      definitive rejection (edit deleted, original code). Keep the existing manual-review and
+      transient-retry cases as regression tests.
+- [x] Update [05-errors.md §4](docs/05-errors.md#4-ambiguous-commit) and the `review` wording in
+      [03-cli-contract.md §5](docs/03-cli-contract.md#5-json-result) in the same commit.
+
+**DoD:** every commit outcome has a test and a documented cleanup/exit-code rule; no definitive
+rejection or unsent release is ever reported as success.
+
+### S11.2. Reconciling after the operation deadline — I8 — 0.25–0.5 d
+
+- [x] Reconcile an expired-deadline commit under the bounded recovery budget (D4), with a
+      single documented attempt policy and a DEBUG/WARN log.
+- [x] Tests: a commit that fails as the deadline expires but was applied is recovered by the
+      new read (success or code 8 per the observed state); a signal-canceled run returns 130,
+      skips recovery and keeps the edit; an exhausted recovery budget returns `unknown`.
+- [x] Document the recovery budget and its interaction with `--timeout` in
+      [05-errors.md §4](docs/05-errors.md#4-ambiguous-commit).
+
+**DoD:** a lost response at the deadline follows one documented policy, uncertainty is reported
+honestly, and cancellation semantics stay intact.
+
+### S11.3. `Prepared` one-shot lifecycle — I9 — 0.25–0.5 d
+
+- [x] Share `valid`/`closed`/`consumed` through a pointer (D8) so copies and the CLI's deferred
+      `Close` agree; keep `Close` idempotent.
+- [x] Reject zero, closed and consumed values before `TrackReleases` or `CreateEdit`, with a
+      local code 1 and a hint to call `Prepare` again.
+- [x] Tests: publish after `Close` creates no edit; a second `PublishPrepared` with the same
+      value is rejected; normal publication and repeated `Close` still pass.
+
+**DoD:** reuse fails locally and predictably, before any network call or edit.
+
+### S11.4. Doctor validates the AAB identity — R18 — 0.5–1 d
+
+- [x] Extract the identity checks from `Prepare` into a shared app helper and use it from both
+      publish and doctor (D6), keeping the existing error messages and exit codes.
+- [x] Doctor: open the AAB with `artifact.Open`, require manifest identity when `--aab` is
+      given, compare `--package` and both metadata fields against it, and close the bundle on
+      every path without a double close.
+- [x] Update doctor fixtures to include `base/manifest/AndroidManifest.xml` via
+      `artifacttest.Manifest`; add wrong-package, mismatched-version, missing-manifest and
+      malformed-manifest cases, plus a valid run that still reports all checks.
+- [x] Update the doctor section of [03-cli-contract.md](docs/03-cli-contract.md#google-play-publisher-doctor--mvp),
+      the doctor description in [README.md](README.md) and the CHANGELOG entry.
+
+**DoD:** doctor rejects an AAB for another application or version locally, valid runs keep
+working, and publish/doctor share one identity implementation.
+
+### S11.5. Per-invocation result files — R19 — 0.25–0.5 d
+
+- [x] Create an invocation-specific directory with `mktemp -d` (D7); place `result.json` and
+      decoded credentials there; keep the `EXIT` trap limited to credentials and stderr.
+- [x] Extend [scripts/publish_test.sh](scripts/publish_test.sh): two sequential invocations
+      with the same `RUNNER_TEMP` expose distinct result paths, both payloads stay readable,
+      and temporary credentials are still removed.
+- [x] Update [07-github-actions.md § Outputs and artifacts](docs/07-github-actions.md#outputs-and-artifacts)
+      with the result-file lifetime and the CHANGELOG entry.
+
+**DoD:** a second publish action cannot overwrite the first result file, and no credentials
+survive the step.
+
+### S11.6. One JSON object on doctor cancellation — R17 — 0.25–0.5 d
+
+- [x] Preserve the rendered-output state independently of error replacement (D5), or centralize
+      final JSON rendering so a rendered result is never emitted twice.
+- [x] Test doctor with `--json` and a cancellation during the checks: exit code 130, exactly one
+      object, the available checks retained, one interruption line on stderr.
+- [x] Update the cancellation rules in
+      [03-cli-contract.md §5](docs/03-cli-contract.md#5-json-result) and §4 if the exit-code
+      wording changes.
+
+**DoD:** cancellation never duplicates or loses the doctor JSON object, and the exit code stays
+130.
+
+### S11.7. Documentation, local gate and v0.0.6 — 0.5–1 d
+
+- [x] Add the v0.0.6 CHANGELOG section covering every behavior change (commit outcomes, exit
+      codes 8/6/130, doctor identity rejection, result-file path) as a 0.x release.
+- [x] Run `make fmt`, `make lint`, `make test`, `make test-race` and `make cover`
+      (≥ 80% total), plus `scripts/setup_test.sh`, `scripts/publish_test.sh`, `actionlint`,
+      `shellcheck` and `scripts/check_links.py`.
+- [x] Update the review checkboxes above only when the matching fix and its regression test are
+      merged; leave I3 open.
+- [ ] Release v0.0.6 through the release workflow and verify the archives and `checksums.txt`
+      exactly as in M4/M5, recording the evidence here.
+- [ ] Confirm the docs pin the released version and that no document advertises unreleased
+      behavior.
+
+**Local evidence 2026-11-09:** `make lint` reports 0 issues (including shellcheck and
+actionlint); `make test` passes with 24/24 setup-script tests and 38/38 publish-script tests;
+`make test-race` is green; `make cover` reports 82.1% total (app 91.2%, play 85.6%, cli 88.5%,
+artifact 77.5%), above the 80% gate; `scripts/check_links.py` resolves all 14 documents.
+The v0.0.6 tag and release evidence are pending.
+
+**DoD:** local gate is green, every review item is closed or explicitly blocked (I3), and
+v0.0.6 is released with verified checksums.
+
+### S11 order and estimates
+
+| Stage | Items | Estimate | Depends on | Can run in parallel with |
+| --- | --- | --- | --- | --- |
+| S11.0 | Decisions and baseline | 0.5 d | — | — |
+| S11.1 | R16, I7 | 1–1.5 d | S11.0 | — |
+| S11.2 | I8 | 0.25–0.5 d | S11.1 | S11.3–S11.6 |
+| S11.3 | I9 | 0.25–0.5 d | S11.0 | S11.1 |
+| S11.4 | R18 | 0.5–1 d | S11.0 | S11.1–S11.3 |
+| S11.5 | R19 | 0.25–0.5 d | S11.0 | S11.1–S11.4 |
+| S11.6 | R17 | 0.25–0.5 d | S11.0 | S11.1–S11.5 |
+| S11.7 | Docs, gate, release | 0.5–1 d | S11.1–S11.6 | — |
+
+**Total:** 3.5–6 person-days; 4.5–7.5 with the 20% buffer. With the independent items
+parallelized, the critical path is S11.0 → S11.1 → S11.2 → S11.7, about 2.5–3.5 wall-clock
+days. R16 is the first fix because every later commit-outcome change builds on it.
+
+### S11 risks
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Commit semantics change exit codes in existing CI | Pipelines that treat any result as success start failing correctly, but may break | CHANGELOG, exit-code table, v0.0.6 gate, action tests that assert 0/8/6 |
+| Lifecycle state is absent in fixtures or responses | Wrong reconciliation decision | Explicit `UNSPECIFIED` fallback with a WARN log and documented compatibility rule |
+| Doctor starts rejecting AABs without a manifest | Existing fixtures, scripts and users see a new local error | Update fixtures and docs, message names the manifest path, separate CHANGELOG entry |
+| Shared identity helper changes publish errors | Regression in the publish path | Refactor with table tests for both callers before changing doctor |
+| JSON rendering refactor breaks single-object output | CI parsing fails or duplicates objects | Tests across publish/status/doctor with cancellation and failing writers |
+| Result-directory change leaves credentials behind | Secret exposure on self-hosted runners | `umask 077`, `trap` cleanup, tests assert credential removal and result survival |
+| Optimistic estimates | Slip into S9 | 20% buffer; independent items parallelizable; no scope creep into S9 |
+
+**S11 DoD:** R16–R19 and I7–I9 are fixed with regression tests and matching documents; the
+local gate is green; v0.0.6 is released with verified checksums; I3 remains the only open
+verification item and is still blocked by S0.
+
+**Gate:** do not start S9 rollout/promote before S11 closes (same publication and reporting
+code). Do not present live verification as complete; local/stub evidence and live evidence stay
+separate, as in S10.

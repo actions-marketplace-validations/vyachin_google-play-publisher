@@ -131,9 +131,10 @@ checked.
 | --- | --- |
 | `api` | token and app access (read-only release request) |
 | `track` | the track exists; number of releases is reported |
-| `artifact` | ZIP with `BundleConfig.pb`, size and sha256 |
+| `artifact` | ZIP with `BundleConfig.pb` and a readable `base/manifest/AndroidManifest.xml`; size and sha256 |
 | `signature` | JAR signature present (`META-INF/*.RSA` / `*.EC` / `*.DSA`); absent → code 7 |
-| `metadata` | when `--metadata` is passed: `applicationId` matches `--package`, `versionCode > 0` |
+| `identity` | manifest `package` and `versionCode`; `--package` must match the AAB, otherwise code 2 |
+| `metadata` | when `--metadata` is passed: `applicationId` and `versionCode` match the AAB, otherwise code 2 |
 
 ### `google-play-publisher status` — MVP (read-only)
 
@@ -184,10 +185,10 @@ a mistake). Environment variables are limited to Google auth and terminal behavi
 | 3 | `AUTH` | 401/403: wrong key path, rejected token request, missing permissions, service account not added, API disabled |
 | 4 | `NOT_FOUND` | App or track not found, no access to the app |
 | 5 | `CONFLICT` | Edit invalidated, changes in review (`ERROR_IF_IN_REVIEW`), version code already exists |
-| 6 | `TRANSIENT` | Network/timeout/5xx after exhausted retries, broken upload, temporary limits (including the daily edit quota) |
+| 6 | `TRANSIENT` | Network/timeout/5xx after exhausted retries, broken upload, temporary limits (including the daily edit quota), or a commit whose state could not be verified (the edit is kept) |
 | 7 | `REJECTED` | Play rejected the changes: signature, version code, release notes, track configuration |
-| 8 | `MANUAL_ACTION` | Changes were saved without review because Play refused automatic submission; submit them manually |
-| 130 | `INTERRUPTED` | SIGINT/SIGTERM; the edit was deleted best-effort |
+| 8 | `MANUAL_ACTION` | Changes were saved but not submitted for review (automatic fallback, or an observed `NOT_SENT_FOR_REVIEW` release); submit them manually |
+| 130 | `INTERRUPTED` | SIGINT/SIGTERM; the edit is deleted best-effort unless a commit was in flight, in which case its state is unknown and the edit is kept |
 
 Rule: the code reflects the **action** a human or pipeline must take, not the HTTP status.
 Details are in [05-errors.md](05-errors.md).
@@ -264,9 +265,14 @@ With `--json`, a failed command writes exactly one object to `stdout`. Logs and 
 human-readable error (including its hint, when available) go to `stderr`, so redirecting
 `stdout` to `publish.json` does not hide the failure reason from CI logs. The exit code and
 JSON schema are unchanged.
-`doctor` reports its checks and the `error` object in that single object. When the release was
-saved but needs manual submission (exit code 8), `stdout` contains the success object with
+`doctor` reports its checks and the `error` object in that single object; an interruption
+also keeps exactly one object and returns code 130. When the release was saved but needs
+manual submission (exit code 8), `stdout` contains the success object with
 `"review": "notSent"`; the action for the operator is on `stderr`.
+
+A commit that Play may have applied but whose state could not be verified is a failure, not a
+success: `stdout` contains the error object with `error.code: "transient"`, and the message
+names the package, track, version code and edit ID. The edit is kept.
 
 Publish results carry `schemaVersion` (currently `1`) in both the success and error objects.
 Adding a field is backwards-compatible; removing or changing a field requires a version bump.

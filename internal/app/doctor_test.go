@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/vyachin/google-play-publisher/internal/app"
+	"github.com/vyachin/google-play-publisher/internal/artifact/artifacttest"
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/play/playtest"
@@ -13,8 +14,9 @@ import (
 func signedAAB(t *testing.T) string {
 	t.Helper()
 	return writeBundleFiles(t, map[string]string{
-		"BundleConfig.pb":   "bundle-config",
-		"META-INF/CERT.RSA": "signature",
+		"BundleConfig.pb":                   "bundle-config",
+		"META-INF/CERT.RSA":                 "signature",
+		"base/manifest/AndroidManifest.xml": string(artifacttest.Manifest("com.example.app", 42, "1.0.42")),
 	})
 }
 
@@ -38,7 +40,7 @@ func TestDoctorSuccess(t *testing.T) {
 	for _, check := range checks {
 		byName[check.Name] = check
 	}
-	for _, name := range []string{"api", "track", "artifact", "signature", "metadata"} {
+	for _, name := range []string{"api", "track", "artifact", "signature", "identity", "metadata"} {
 		check, ok := byName[name]
 		if !ok {
 			t.Fatalf("missing %q check in %#v", name, checks)
@@ -88,9 +90,42 @@ func TestDoctorAPIError(t *testing.T) {
 
 func TestDoctorMetadataMismatch(t *testing.T) {
 	_, err := app.Doctor(context.Background(), &playtest.Fake{}, app.DoctorOptions{
-		Package:      "com.other.app",
+		Package:      "com.example.app",
 		AABPath:      signedAAB(t),
-		MetadataPath: writeMetadata(t, 42),
+		MetadataPath: writeMetadata(t, 43),
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := exitcode.From(err); got != exitcode.Usage {
+		t.Fatalf("code = %d, want %d", got, exitcode.Usage)
+	}
+}
+
+func TestDoctorRejectsWrongPackage(t *testing.T) {
+	checks, err := app.Doctor(context.Background(), &playtest.Fake{}, app.DoctorOptions{
+		Package: "com.other.app",
+		AABPath: signedAAB(t),
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := exitcode.From(err); got != exitcode.Usage {
+		t.Fatalf("code = %d, want %d", got, exitcode.Usage)
+	}
+	last := checks[len(checks)-1]
+	if last.Name != "identity" || last.OK {
+		t.Fatalf("unexpected last check: %#v", last)
+	}
+}
+
+func TestDoctorRejectsAABWithoutManifest(t *testing.T) {
+	_, err := app.Doctor(context.Background(), &playtest.Fake{}, app.DoctorOptions{
+		Package: "com.example.app",
+		AABPath: writeBundleFiles(t, map[string]string{
+			"BundleConfig.pb":   "bundle-config",
+			"META-INF/CERT.RSA": "signature",
+		}),
 	})
 	if err == nil {
 		t.Fatal("expected an error")
@@ -168,6 +203,23 @@ func TestStatusAPIError(t *testing.T) {
 
 func TestStatusRequiresPackage(t *testing.T) {
 	_, err := app.Status(context.Background(), &playtest.Fake{}, "", "internal")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := exitcode.From(err); got != exitcode.Usage {
+		t.Fatalf("code = %d, want %d", got, exitcode.Usage)
+	}
+}
+
+func TestDoctorRejectsMalformedManifest(t *testing.T) {
+	_, err := app.Doctor(context.Background(), &playtest.Fake{}, app.DoctorOptions{
+		Package: "com.example.app",
+		AABPath: writeBundleFiles(t, map[string]string{
+			"BundleConfig.pb":                   "bundle-config",
+			"META-INF/CERT.RSA":                 "signature",
+			"base/manifest/AndroidManifest.xml": "not-a-protobuf-manifest",
+		}),
+	})
 	if err == nil {
 		t.Fatal("expected an error")
 	}

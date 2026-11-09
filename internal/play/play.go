@@ -31,6 +31,15 @@ const (
 	InReviewReplace = "CANCEL_IN_REVIEW_AND_SUBMIT"
 )
 
+// Release lifecycle states reported by applications.tracks.releases.list.
+const (
+	LifecycleUnspecified      = "RELEASE_LIFECYCLE_STATE_UNSPECIFIED"
+	LifecycleDraft            = "RELEASE_LIFECYCLE_STATE_DRAFT"
+	LifecycleNotSentForReview = "RELEASE_LIFECYCLE_STATE_NOT_SENT_FOR_REVIEW"
+	LifecycleInReview         = "RELEASE_LIFECYCLE_STATE_IN_REVIEW"
+	LifecyclePublished        = "RELEASE_LIFECYCLE_STATE_PUBLISHED"
+)
+
 // BundleInfo describes an uploaded Android App Bundle.
 type BundleInfo struct {
 	VersionCode int64

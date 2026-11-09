@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.0.6 — 2026-11-09
+
+### Fixed
+
+- A commit rejected by Play is no longer reported as success when another operation puts the
+  same version code on the track. Only failures typed as transport or 5xx are reconciled; a
+  definitive rejection keeps its exit code and does not read the track.
+- An ambiguous commit observed as `NOT_SENT_FOR_REVIEW` reports `review: "notSent"` and exit
+  code 8 with the Play Console instruction, unless `--changes-not-sent-for-review` was passed
+  explicitly (then 0), or the run requested `--status draft`.
+- An unverifiable commit keeps its edit and returns code 6 with the package, track, version
+  code and edit ID instead of deleting the edit as a failed publication.
+- A commit whose response is lost at the `--timeout` deadline is reconciled under a separate
+  15 s recovery budget. SIGINT/SIGTERM interrupts an already running recovery and still
+  returns 130.
+- `doctor` validates the AAB manifest identity: a bundle for another application or version is
+  rejected locally with code 2, `--metadata` is compared with the AAB, and the file is closed
+  on every path.
+- `--json doctor` interrupted while running writes exactly one JSON object and exits with
+  code 130.
+- Reusing a closed or already consumed `Prepared` publish operation fails locally before an
+  edit is created.
+
+### Changed
+
+- Each publish action invocation writes its result file to a fresh `$RUNNER_TEMP` directory,
+  so two publish steps in one job keep separate `result-file` outputs.
+- `doctor --aab` now requires a readable `base/manifest/AndroidManifest.xml`, matching
+  publish. Bundles without it were never valid release artifacts.
+
 ## v0.0.5 — 2026-11-09
 
 ### Added

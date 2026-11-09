@@ -34,6 +34,12 @@ func Execute(ctx context.Context, app *App, args []string) int {
 		return int(exitcode.OK)
 	}
 
+	// A command can render its JSON result before returning its error. Keep
+	// that fact even when cancellation replaces the error below, so stdout
+	// never receives a second object.
+	var rendered *renderedError
+	alreadyRendered := errors.As(err, &rendered)
+
 	code := exitcode.From(err)
 	if ctx.Err() != nil {
 		code = exitcode.Interrupted
@@ -41,8 +47,7 @@ func Execute(ctx context.Context, app *App, args []string) int {
 	}
 
 	if g.JSON {
-		var rendered *renderedError
-		if !errors.As(err, &rendered) {
+		if !alreadyRendered {
 			if writeErr := writeErrorJSON(app.Stdout, executed, err, code); writeErr != nil {
 				printError(app.Stderr, writeErr, exitcode.Internal)
 				return int(exitcode.Internal)

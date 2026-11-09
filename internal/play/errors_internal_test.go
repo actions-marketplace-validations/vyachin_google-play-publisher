@@ -148,3 +148,32 @@ type timeoutError struct{}
 func (timeoutError) Error() string   { return "i/o timeout" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
+
+func TestMapErrorMarksAmbiguousFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"deadline", context.DeadlineExceeded, true},
+		{"eof", io.EOF, true},
+		{"connection reset", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}, true},
+		{"server error", &googleapi.Error{Code: http.StatusServiceUnavailable}, true},
+		{"rate limited", &googleapi.Error{Code: http.StatusTooManyRequests}, false},
+		{"validation", &googleapi.Error{Code: http.StatusBadRequest}, false},
+		{"conflict", &googleapi.Error{Code: http.StatusConflict}, false},
+		{"canceled", context.Canceled, false},
+		{"certificate", &url.Error{Op: "Get", URL: "https://example.com", Err: x509.UnknownAuthorityError{}}, false},
+		{"token network", &oauth2.RetrieveError{ErrorCode: "invalid_grant"}, false},
+		{"token outage", &auth.Error{Response: &http.Response{StatusCode: http.StatusServiceUnavailable}}, false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := mapError(test.err)
+			if got := IsAmbiguous(err); got != test.want {
+				t.Fatalf("IsAmbiguous = %v, want %v (%v)", got, test.want, err)
+			}
+		})
+	}
+}

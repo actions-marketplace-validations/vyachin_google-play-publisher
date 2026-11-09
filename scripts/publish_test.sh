@@ -133,6 +133,10 @@ grep -qF -- "--debug" "${WORK}/stub_args" && ok "forwards debug" || not_ok "forw
 grep -qF -- "v1.0.42" "${WORK}/stub_args" && ok "forwards the expected tag" || not_ok "forwards the expected tag"
 grep -qF "Google Play publish" "${WORK}/summary" && ok "writes the Job Summary" || not_ok "writes the Job Summary"
 
+# Each invocation keeps its own result file.
+first_result="$(output_value result_file)"
+first_dir="$(dirname "$first_result")"
+
 # Idempotent skip: no edit id.
 skip_json="${WORK}/skip.json"
 printf '%s\n' '{"ok":true,"command":"publish","package":"com.example.app","track":"internal","status":"completed","versionCode":42,"review":"skipped","managedPublishing":"unknown","durationMs":1}' >"$skip_json"
@@ -141,6 +145,13 @@ run_publish "${COMMON[@]}" STUB_JSON="$skip_json"
 expect_ok "handles an idempotent skip"
 [ "$(output_value skipped)" = "true" ] && ok "marks a skip in outputs" || not_ok "marks a skip in outputs"
 [ -z "$(output_value edit_id)" ] && ok "leaves edit-id empty on a skip" || not_ok "leaves edit-id empty on a skip"
+
+second_result="$(output_value result_file)"
+second_dir="$(dirname "$second_result")"
+[ "$first_result" != "$second_result" ] && ok "keeps a distinct result file per invocation" || not_ok "keeps a distinct result file per invocation"
+[ -f "$first_result" ] && grep -qF '"review":"sent"' "$first_result" && ok "preserves the earlier result payload" || not_ok "preserves the earlier result payload"
+[ -f "$second_result" ] && grep -qF '"review":"skipped"' "$second_result" && ok "writes the current result payload" || not_ok "writes the current result payload"
+rm -rf "$first_dir" "$second_dir"
 
 # Manual review action: exit code 8 must be preserved.
 manual_json="${WORK}/manual.json"

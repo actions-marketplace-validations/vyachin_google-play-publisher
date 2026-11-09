@@ -3,9 +3,11 @@ package cli_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
+	"github.com/vyachin/google-play-publisher/internal/artifact/artifacttest"
 	"github.com/vyachin/google-play-publisher/internal/exitcode"
 	"github.com/vyachin/google-play-publisher/internal/play"
 	"github.com/vyachin/google-play-publisher/internal/play/playtest"
@@ -14,8 +16,9 @@ import (
 func signedAAB(t *testing.T) string {
 	t.Helper()
 	return writeBundleFiles(t, map[string]string{
-		"BundleConfig.pb":   "bundle-config",
-		"META-INF/CERT.RSA": "signature",
+		"BundleConfig.pb":                   "bundle-config",
+		"META-INF/CERT.RSA":                 "signature",
+		"base/manifest/AndroidManifest.xml": string(artifacttest.Manifest("com.example.app", 42, "1.0.42")),
 	})
 }
 
@@ -41,8 +44,8 @@ func TestDoctorJSON(t *testing.T) {
 	if !got.OK || got.Package != "com.example.app" {
 		t.Fatalf("unexpected JSON: %#v", got)
 	}
-	if len(got.Checks) != 4 {
-		t.Fatalf("checks = %d, want 4: %s", len(got.Checks), out)
+	if len(got.Checks) != 5 {
+		t.Fatalf("checks = %d, want 5: %s", len(got.Checks), out)
 	}
 	for _, check := range got.Checks {
 		if !check.OK {
@@ -170,5 +173,43 @@ func TestStatusAPIError(t *testing.T) {
 	_, _, code := runWithAPI(t, fake, "status", "-p", "com.example.app")
 	if code != int(exitcode.NotFound) {
 		t.Fatalf("code = %d, want %d", code, exitcode.NotFound)
+	}
+}
+
+func TestDoctorCancellationWritesOneJSONObject(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fake := &playtest.Fake{
+		TrackReleasesFunc: func(context.Context, string, string) ([]play.ReleaseSummary, error) {
+			cancel()
+			return nil, exitcode.Errorf(exitcode.Auth, "access denied")
+		},
+	}
+	out, errOut, code := runWithAPIAndContext(ctx, t, fake, "--json", "doctor",
+		"-p", "com.example.app", "-f", writeAAB(t))
+
+	if code != int(exitcode.Interrupted) {
+		t.Fatalf("code = %d, want %d (stderr: %q)", code, exitcode.Interrupted, errOut)
+	}
+	if !strings.Contains(errOut, "operation interrupted") {
+		t.Fatalf("unexpected stderr: %q", errOut)
+	}
+
+	dec := json.NewDecoder(strings.NewReader(out))
+	var first map[string]any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("stdout is not JSON: %v (%q)", err, out)
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		t.Fatalf("stdout must contain exactly one JSON object: %v (%q)", err, out)
+	}
+	if first["command"] != "doctor" {
+		t.Fatalf("command = %v, want doctor", first["command"])
+	}
+	checks, _ := first["checks"].([]any)
+	if len(checks) == 0 {
+		t.Fatalf("the available checks must be retained: %#v", first)
 	}
 }

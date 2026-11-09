@@ -151,7 +151,10 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		return err
 	}
 
-	publisher := appcore.NewPublisher(api, a.Logger)
+	// The recovery read may outlive the operation deadline, so it is parented
+	// by the signal context rather than by ctx: a signal interrupts recovery,
+	// an expired --timeout does not.
+	publisher := appcore.NewPublisher(api, a.Logger, appcore.WithRecoveryBase(cmd.Context()))
 
 	start := time.Now()
 	result, err := publisher.PublishPrepared(ctx, prepared)

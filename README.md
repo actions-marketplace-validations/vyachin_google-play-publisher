@@ -33,8 +33,8 @@ Full setup instructions: [docs/04-play-console-setup.md](docs/04-play-console-se
 ## Quick start
 
 ```bash
-# 1. Check access and the target track
-google-play-publisher doctor -p com.example.app
+# 1. Check access, the target track and the AAB identity
+google-play-publisher doctor -p com.example.app -f app-release.aab
 
 # 2. Publish to internal; package and versionCode come from the AAB
 google-play-publisher publish -f app-release.aab -t internal
@@ -45,7 +45,8 @@ google-play-publisher status -p com.example.app -t internal
 
 The CLI reads `package`, `versionCode` and `versionName` from the AAB manifest. Passing
 `--package` or `--version-code` is optional and acts as an assertion: a value that does not
-match the AAB fails with exit code 2 before any network call.
+match the AAB fails with exit code 2 before any network call. `doctor` applies the same
+manifest checks when `--aab` is passed, including `--metadata` consistency.
 
 `--json` prints a machine-readable result to stdout; logs go to stderr:
 

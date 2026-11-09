@@ -159,8 +159,17 @@ integration test shows that a merge is needed (preserving previous `completed` r
   an explicit `--on-in-review=replace`;
 - `ChangesNotSentForReview`: `false` by default; when Play refuses automatic submission, the
   tool retries exactly once with `true`, reports the saved release and exits with code 8;
-- every ambiguous failure is reconciled against the track before a retry or an error, and the
-  reported review state comes from the options that were actually sent.
+- definitive Play rejections and token retrieval failures are returned without a
+  reconciliation read; only failures typed by the adapter as transport or server-side
+  failures are reconciled;
+- the reconciliation read also considers `releaseLifecycleState`: a release observed as
+  `NOT_SENT_FOR_REVIEW` reports `notSent` and code 8 unless
+  `--changes-not-sent-for-review` was explicit; an unset state keeps the historical
+  version-presence rule and logs a warning;
+- the commit outcome is explicit (`committed`, `notCommitted`, `unknown`). The edit is
+  deleted only for `notCommitted`; `unknown` keeps it and reports the package, track, version
+  code and edit ID with code 6. See
+  [05-errors.md](05-errors.md#4-ambiguous-commit).
 
 ## 5. Review policy
 
@@ -186,11 +195,11 @@ reused for a new release.
 | Error before `edits.insert` | Nothing created | Exit with the cause code, no retries |
 | `bundles.upload` error (network/5xx) | Edit active | Retry chunks; if the session dies, upload again into the same edit |
 | `tracks.update` error (validation) | Edit active, AAB uploaded | Do not retry; delete the edit (best effort), code 7, Play message |
-| `commit` error (validation) | Edit active | Delete the edit, code 7; fix the flags or the build |
-| Timeout/5xx on `commit` (ambiguous) | Unknown | Check `applications.tracks.releases.list`: if `versionCode` is on the track, it succeeded; otherwise retry the commit (the edit may still be alive) |
-| `edit not found` / `edit invalid` on commit | Edit invalidated | Check the track; if the version is absent, code 5 with a rerun instruction using a new version code |
+| `commit` error (validation) | Edit active | Delete the edit, code 7; fix the flags or the build. Definitive rejections are not reconciled |
+| Timeout/5xx on `commit` (typed ambiguous) | Unknown | Read `applications.tracks.releases.list` and the release lifecycle state: present and submitted → success; present as `NOT_SENT_FOR_REVIEW` → saved, code 8; absent → retry once; unreadable → unknown, code 6, edit kept |
+| `edit not found` / `edit invalid` on commit | Edit invalidated | Definitive code 5 without reconciliation; rerun with a new version code |
 | `versionCode` already on the track | Already released | `--if-exists=skip` → success (idempotent rerun); otherwise code 5 |
-| SIGINT/SIGTERM | Edit active | Cancel the context, best-effort `edits.delete` in a short separate context, code 130 |
+| SIGINT/SIGTERM | Edit active | Cancel the context. If a commit was in flight the outcome is unknown and the edit is kept; otherwise delete the edit best-effort. Code 130 |
 
 Republishing the same AAB after a **successful** commit is not attempted: it is a separate
 release with the same version code, which Play rejects. The AAB version code is known before
@@ -211,6 +220,11 @@ locally.
 Cancellation on a signal: `signal.NotifyContext`, plus a separate
 `context.WithTimeout(..., 15*time.Second)` for cleanup so the process does not hang on edit
 deletion.
+
+An ambiguous commit that reaches the operation deadline is reconciled under a separate 15 s
+recovery budget (`WithRecoveryBase` + `context.WithTimeout`). The recovery context is
+parented by the signal context, not by the expired operation context, so a signal interrupts
+an already running recovery and keeps exit code 130.
 
 ## 8. Logging and debug mode
 

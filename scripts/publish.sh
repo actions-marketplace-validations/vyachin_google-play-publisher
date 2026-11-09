@@ -55,10 +55,10 @@ resolve_path() {
 }
 
 tmp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-result_dir="${tmp_root%/}/google-play-publisher"
-mkdir -p "$result_dir"
+# Every invocation owns its result file: a second publish action in the same
+# job must not overwrite a result that downstream steps still reference.
+result_dir="$(mktemp -d "${tmp_root%/}/google-play-publisher.XXXXXX")"
 result_file="${result_dir}/result.json"
-rm -f "$result_file"
 
 cred_path=""
 cred_created=0

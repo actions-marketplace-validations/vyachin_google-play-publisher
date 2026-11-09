@@ -40,7 +40,7 @@ func newDoctorCmd(a *App, g *globalFlags) *cobra.Command {
 		Use:     "doctor",
 		GroupID: "inspect",
 		Short:   "Check Play access, track and AAB before publishing",
-		Long:    "Run read-only checks: API access, target track, AAB shape, signature and AGP metadata.",
+		Long:    "Run read-only checks: API access, target track, AAB shape, signature, manifest identity and AGP metadata.",
 		Example: `  google-play-publisher doctor -p com.example.app
   google-play-publisher doctor -p com.example.app -f app-release.aab --metadata output-metadata.json`,
 		Args: noArgs,
