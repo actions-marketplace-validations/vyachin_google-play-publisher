@@ -35,8 +35,8 @@ jobs:
       - name: Check the installed version
         run: |
           google-play-publisher --json version > version.json
-          jq -e '.version == "0.0.4"' version.json
-          test "${{ steps.setup.outputs.version }}" = "0.0.4"
+          jq -e '.version == "0.0.5"' version.json
+          test "${{ steps.setup.outputs.version }}" = "0.0.5"
           test -n "${{ steps.setup.outputs.path }}"
 
   publish-stub:
