@@ -1,11 +1,11 @@
 # 07 — GitHub Actions
 
-**Status:** interface under development. The setup action is implemented, but no release that
-contains it exists yet. Do not reference `@main` from a production workflow; pin the release
-tag published in S10.6.
+**Status:** interface under development. The setup and publish actions are implemented, but no
+release that contains them exists yet. Do not reference `@main` from a production workflow; pin
+the release tag published in S10.6.
 
-This guide documents the setup action. The publish action, complete workflow examples and
-release pinning are added in the same stage before the first action release.
+This guide documents both actions. Complete workflow examples are added in S10.5 before the
+first action release.
 
 ## Support matrix
 
@@ -70,8 +70,85 @@ After the setup step, use the CLI directly:
 The setup action does not handle Play credentials; pass them to the CLI step as described in
 [04 — Play Console and access setup](04-play-console-setup.md).
 
+## Publish action
+
+Uploads a signed AAB, declares the release on a track and commits. The action is a thin
+wrapper around the CLI: input validation, Play calls, retries and exit codes stay in
+`google-play-publisher`.
+
+```yaml
+- uses: vyachin/google-play-publisher@<release-tag>
+  with:
+    version: 0.0.5
+    package: com.example.app
+    aab: android/app/build/outputs/bundle/release/app-release.aab
+    track: internal
+    changelog-dir: android/metadata
+    version-code: 42
+    credentials-base64: ${{ secrets.GOOGLE_PLAY_SA_BASE64 }}
+```
+
+Inputs:
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `version` | no | action release tag | CLI version; required when the action ref is a branch or SHA |
+| `package` | yes | — | `applicationId` in Play Console |
+| `aab` | yes | — | Path to the signed AAB |
+| `track` | no | `internal` | Release track |
+| `changelog-dir` | no | — | Play-style metadata directory with `<locale>/changelogs/<versionCode>.txt` |
+| `version-code` | no | — | Version code used for changelog lookup and upload verification; required with `changelog-dir` until the AAB-derived identity is released |
+| `release-name` | no | — | Release name; empty lets Play generate it from the AAB version name |
+| `if-exists` | no | `fail` | `fail` or `skip` when the version code is already on the track |
+| `credentials-base64` | no | — | Base64-encoded service-account JSON |
+| `credentials-file` | no | — | Path to a service-account JSON key; relative paths use `GITHUB_WORKSPACE` |
+| `timeout` | no | CLI default | Overall operation timeout |
+| `debug` | no | `false` | Debug logging; secrets are redacted |
+
+`credentials-base64` and `credentials-file` are mutually exclusive. With neither input the
+CLI falls back to Application Default Credentials.
+
+Outputs:
+
+| Output | Description |
+| --- | --- |
+| `version-code` | Version code reported by the upload |
+| `edit-id` | Play edit id, empty for a skip |
+| `review` | `sent`, `notSent`, `replaced`, `skipped` or `validated` |
+| `skipped` | `true` for an idempotent skip |
+| `manual-action` | `true` when the release was saved without review |
+| `error-code` | Stable CLI error code for a failure |
+| `result-file` | Path to the captured CLI JSON result |
+
+Behavior:
+
+- relative input paths resolve against `GITHUB_WORKSPACE`; `defaults.run.working-directory`
+  does not change action input paths;
+- inputs are passed as quoted CLI arguments, never interpolated into shell source;
+- base64 credentials are decoded into a `umask 077` temporary file under `$RUNNER_TEMP`,
+  masked in the log, and removed after success or failure;
+- the CLI runs once with `--json`; stderr is forwarded to the job log, the JSON result is
+  captured in `result-file`;
+- the CLI exit code is preserved, including 8 for a release saved without review; the Job
+  Summary explains the required manual submission;
+- `jq` is used to derive outputs on GitHub-hosted Linux runners; when it is missing the raw
+  result file is kept and a warning is emitted instead of failing the publication.
+
+### Exit codes
+
+The action exits with the CLI code: 0 for success or an idempotent skip, 5 for a conflict,
+6 for a transient failure, 8 for manual submission and so on. See the
+[CLI contract](03-cli-contract.md#4-exit-codes).
+
+### Concurrency
+
+One edit per user and app is allowed by Play. The action cannot enforce this across jobs;
+add a per-app `concurrency` group to the workflow that calls it.
+
 ## Action revision and CLI version
 
 The action revision (`@<release-tag>`) and the CLI `version` input are separate coordinates.
 Pin the action to a release tag, optionally to a commit SHA for stricter supply-chain control,
 and pass the CLI version that the workflow should run. Both must exist as released artifacts.
+The publish action defaults `version` to the action ref only when that ref is a release tag;
+with a branch or SHA, pass `version` explicitly.

@@ -546,8 +546,8 @@ The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
 document, verify and release the result. S10 can proceed independently of the S9
 rollout/promote work. S10.0 is accepted in
-[ADR-0004](docs/adr/0004-github-actions.md) and S10.1 (setup action) is implemented;
-implementation continues with S10.2.
+[ADR-0004](docs/adr/0004-github-actions.md); the setup and publish actions are
+implemented (S10.1–S10.2); implementation continues with S10.3.
 
 ### Analysis
 
@@ -676,33 +676,35 @@ implementation started before the decisions were settled.
 **DoD:** a setup step replaces the current curl/checksum/tar script, and subsequent `run`
 steps invoke the requested `google-play-publisher` version.
 
-### S10.2. Provide a publish action over the existing CLI — 1.5–2 d
+### S10.2. Provide a publish action over the existing CLI — 1.5–2 d — done
 
-- [ ] Add root `action.yml`, usable as `vyachin/google-play-publisher@<ref>`. Reuse the setup
-      script through `$GITHUB_ACTION_PATH`; delegate publication behavior to the CLI; do not
-      duplicate Play API calls or release validation in action scripts.
-- [ ] Define validated inputs: CLI version, package, AAB path, track (default `internal`),
+- [x] Add root [action.yml](action.yml), usable as `vyachin/google-play-publisher@<ref>`.
+      Reuse the setup script through `$GITHUB_ACTION_PATH`; delegate publication behavior to
+      the CLI; do not duplicate Play API calls or release validation in action scripts.
+- [x] Define validated inputs: CLI version, package, AAB path, track (default `internal`),
       changelog directory, version code, release name, existing-version policy (default
-      `fail`), expected tag (wired in S10.4), credentials base64/file, timeout and debug.
-      Inputs stay strings and are validated in the script; pass them to the CLI as quoted
-      array elements, never through `eval` or interpolated shell source.
-- [ ] Implement the publish script as one `run` step with `trap ... EXIT`: resolve relative
-      paths against `GITHUB_WORKSPACE` (document that `defaults.run.working-directory` does
-      not affect action inputs), materialize credentials as decided in D6, call
-      `google-play-publisher --json ... > "$RESULT_FILE"`, preserve the exit code, publish
-      outputs, and write `$GITHUB_STEP_SUMMARY` with package, track, version, edit, review and
-      the manual-submission instruction for exit code 8.
-- [ ] Define output semantics for success, idempotent skip (no `editId`), saved-without-review
+      `fail`), credentials base64/file, timeout and debug; the expected-tag input is wired in
+      S10.4. Inputs stay strings and are validated in the script; they are passed to the CLI
+      as quoted array elements, never through `eval` or interpolated shell source.
+- [x] Implement [scripts/publish.sh](scripts/publish.sh) as one `run` step with
+      `trap ... EXIT`: resolve relative paths against `GITHUB_WORKSPACE` (document that
+      `defaults.run.working-directory` does not affect action inputs), materialize
+      credentials as decided in D6, call `google-play-publisher --json ... > "$RESULT_FILE"`,
+      preserve the exit code, publish outputs, and write `$GITHUB_STEP_SUMMARY` with package,
+      track, version, edit, review and the manual-submission instruction for exit code 8.
+- [x] Define output semantics for success, idempotent skip (no `editId`), saved-without-review
       and failure (error JSON when available); expose the result file as an
       artifact-friendly path.
-- [ ] Keep `doctor` available as setup plus a separate CLI step before the expensive build;
+- [x] Keep `doctor` available as setup plus a separate CLI step before the expensive build;
       do not add an implicit access check to the publish action.
-- [ ] Test input forwarding, both credential modes and cleanup, paths containing spaces and
-      shell metacharacters, success, skip, ordinary failure and exit code 8 with a stub CLI
-      (no live uploads); assert secrets are masked and absent from logs and summaries.
+- [x] Test input forwarding, both credential modes and cleanup, paths containing spaces,
+      success, skip, ordinary failure and exit code 8 with a stub CLI
+      ([scripts/publish_test.sh](scripts/publish_test.sh), no live uploads); assert secrets are
+      masked and absent from logs and summaries.
 
 **DoD:** a single publish step replaces installation, Google Play key decoding and the shell
-publish command in the supplied Android workflow; build and signing steps stay explicit.
+publish command in the supplied Android workflow; build and signing steps stay explicit. The
+Gunclub workflow switch itself is S10.6.
 
 ### S10.3. Resolve release identity from the AAB in the CLI — 2.5–3.5 d
 

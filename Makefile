@@ -21,12 +21,14 @@ build:
 test:
 	go test ./...
 	bash scripts/setup_test.sh
+	bash scripts/publish_test.sh
 
 test-race:
 	go test -race ./...
 
 test-scripts:
 	bash scripts/setup_test.sh
+	bash scripts/publish_test.sh
 
 lint:
 	golangci-lint run

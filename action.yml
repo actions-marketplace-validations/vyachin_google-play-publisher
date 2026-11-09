@@ -1,0 +1,85 @@
+name: Publish an AAB to Google Play
+description: Upload and publish a signed Android App Bundle with google-play-publisher
+inputs:
+  version:
+    description: 'CLI version (X.Y.Z or vX.Y.Z); defaults to the action release tag'
+    required: false
+  package:
+    description: Application id of the app in Play Console
+    required: true
+  aab:
+    description: Path to the signed AAB, relative to GITHUB_WORKSPACE or absolute
+    required: true
+  track:
+    description: Release track
+    required: false
+    default: internal
+  changelog-dir:
+    description: Play-style metadata directory with <locale>/changelogs/<versionCode>.txt files
+    required: false
+  version-code:
+    description: Version code used for changelog lookup and upload verification
+    required: false
+  release-name:
+    description: Release name shown in Play Console (empty lets Play generate it)
+    required: false
+  if-exists:
+    description: Behavior when the version code is already on the track (fail or skip)
+    required: false
+    default: fail
+  credentials-base64:
+    description: Base64-encoded service account JSON; mutually exclusive with credentials-file
+    required: false
+  credentials-file:
+    description: Path to a service account JSON key; mutually exclusive with credentials-base64
+    required: false
+  timeout:
+    description: Overall CLI operation timeout
+    required: false
+  debug:
+    description: Enable debug logging (secrets are redacted)
+    required: false
+    default: 'false'
+outputs:
+  version-code:
+    description: Version code reported by the upload
+    value: ${{ steps.publish.outputs.version_code }}
+  edit-id:
+    description: Play edit id when an edit was created
+    value: ${{ steps.publish.outputs.edit_id }}
+  review:
+    description: Review outcome (sent, notSent, replaced, skipped or validated)
+    value: ${{ steps.publish.outputs.review }}
+  skipped:
+    description: 'true when the version code was already on the track and --if-exists=skip was used'
+    value: ${{ steps.publish.outputs.skipped }}
+  manual-action:
+    description: 'true when the release was saved without review and needs a manual submission'
+    value: ${{ steps.publish.outputs.manual_action }}
+  error-code:
+    description: Stable machine-readable error code from the CLI JSON result
+    value: ${{ steps.publish.outputs.error_code }}
+  result-file:
+    description: Path to the captured CLI JSON result
+    value: ${{ steps.publish.outputs.result_file }}
+runs:
+  using: composite
+  steps:
+    - name: Publish
+      id: publish
+      shell: bash
+      env:
+        GPP_REQUESTED_VERSION: ${{ inputs.version }}
+        GPP_ACTION_REF: ${{ github.action_ref }}
+        GPP_PACKAGE: ${{ inputs.package }}
+        GPP_AAB: ${{ inputs.aab }}
+        GPP_TRACK: ${{ inputs.track }}
+        GPP_CHANGELOG_DIR: ${{ inputs['changelog-dir'] }}
+        GPP_VERSION_CODE: ${{ inputs['version-code'] }}
+        GPP_RELEASE_NAME: ${{ inputs['release-name'] }}
+        GPP_IF_EXISTS: ${{ inputs['if-exists'] }}
+        GPP_CREDENTIALS_BASE64: ${{ inputs['credentials-base64'] }}
+        GPP_CREDENTIALS_FILE: ${{ inputs['credentials-file'] }}
+        GPP_TIMEOUT: ${{ inputs.timeout }}
+        GPP_DEBUG: ${{ inputs.debug }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/publish.sh"
