@@ -142,16 +142,16 @@ panic/exit в `main` только в одном месте.
 
 **DoD:** пайплайн зелёный, покрытие выше порога, интеграционный прогон воспроизводим вручную.
 
-## S8. Релиз v0.1 — 0.5–1 д
+## S8. Релиз v0.1 — 0.5–1 д — выполнено
 
-- [ ] `goreleaser`: linux/darwin/windows, amd64/arm64, tar.gz/zip, checksums, changelog.
-- [ ] `-trimpath -ldflags "-s -w -X main.version=..."`; версия видна в `gplay version`.
-- [ ] Smoke-тест linux/amd64 в контейнере.
-- [ ] Инструкция: установка, `doctor`, первый `publish` в `internal`.
-- [ ] Тег `v0.1.0`, заметки о релизе.
+- [x] `goreleaser`: linux/darwin/windows, amd64/arm64, tar.gz/zip, checksums, changelog.
+- [x] `-trimpath` и `-ldflags`; версия/commit/date видны в `gplay version`.
+- [x] Smoke-тест linux/amd64 и linux/arm64 в контейнерах.
+- [x] Инструкция: [README.md](README.md) — установка, doctor, первый publish в `internal`.
+- [x] Тег `v0.1.0` и заметки в [CHANGELOG.md](CHANGELOG.md).
 
-**DoD:** бинарник скачивается, запускается, публикует на тестовом приложении; документация совпадает с
-поведением.
+**DoD:** бинарники собираются, запускаются и публикуют на тестовом приложении; документация совпадает
+с поведением.
 
 ## S9. После MVP — 3–5 д
 
