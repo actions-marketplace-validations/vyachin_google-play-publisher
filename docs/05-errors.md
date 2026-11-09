@@ -1,136 +1,140 @@
-# 05 — Ошибки, ретраи и коды выхода
+# 05 — Errors, retries and exit codes
 
-Документ связывает ответы Play API с действиями человека и пайплайна. Реализация обязана следовать таблицам,
-а не эвристикам по тексту.
+This document connects Play API responses to actions for humans and pipelines. The
+implementation must follow the tables, not heuristics on message text.
 
-## 1. Как читать ошибку API
+## 1. Reading an API error
 
-Go-клиент возвращает `*googleapi.Error`:
+The Go client returns `*googleapi.Error`:
 
 ```go
 var gerr *googleapi.Error
 if errors.As(err, &gerr) {
-    // gerr.Code    — HTTP-статус
-    // gerr.Message — человекочитаемое сообщение Play
+    // gerr.Code    — HTTP status
+    // gerr.Message — human-readable Play message
     // gerr.Errors  — []googleapi.ErrorItem{Reason, Message, Domain, Location}
-    // gerr.Header  — заголовки (в т.ч. Retry-After)
+    // gerr.Header  — headers (including Retry-After)
 }
 ```
 
-Классификация идёт по трём признакам в порядке приоритета:
+Classification uses three signals in priority order:
 
-1. транспорт (сеть, таймаут, 5xx);
-2. HTTP-статус;
-3. `reason` и текст сообщения (для валидационных отказов Play).
+1. transport (network, timeout, 5xx);
+2. HTTP status;
+3. `reason` and message text (for Play validation rejections).
 
-Текст сообщения используется только как fallback и матчится по стабильным фрагментам, потому что Play меняет
-формулировки.
+Message text is only a fallback and is matched by stable fragments, because Play changes
+wording.
 
-## 2. Каталог ошибок
+## 2. Error catalog
 
-| HTTP | Признак | Причина | Код выхода | Ретрай | Действие |
+| HTTP | Marker | Cause | Exit code | Retry | Action |
 | --- | --- | --- | --- | --- | --- |
-| — | `context.DeadlineExceeded`, `io.EOF`, `ECONNRESET` | Сеть/таймаут | 6 | Да | Повторить запуск |
-| 500/502/503/504 | — | Сбой Play | 6 | Да | Повторить, затем эскалация |
-| 429 | `rateLimitExceeded` | Превышен минутный лимит | 6 | Да, с `Retry-After` | Подождать |
-| 401 | `UNAUTHENTICATED` | Токен не получен/просрочен | 3 | Нет | Проверить креденшелы |
-| 403 | `PERMISSION_DENIED`, «The caller does not have permission» | Нет прав в Play Console | 3 | Нет | Выдать права service account |
-| 403 | «API has not been used in project … or it is disabled» | API не включён | 3 | Нет | Enable API |
-| 403 | `Daily edit creation quota exceeded.` | Суточная квота edits | 6 | Нет | Ждать сутки; убрать циклы edits |
-| 404 | `Application not found` | Неверный package или нет доступа | 4 | Нет | Сверить `applicationId`, доступ |
-| 404 | `Track not found` | Трек не существует в приложении | 4 | Нет | Создать трек в консоли / сменить имя |
-| 400 | `badRequest` без спец. признаков | Валидация Play | 7 | Нет | Прочитать сообщение, исправить |
-| 400 | «version code … has already been used» | Повтор versionCode | 5 | Нет | Поднять versionCode / `--if-exists=skip` |
-| 400 | «App bundle … is not signed» / ошибка подписи | AAB не подписан или чужой ключ | 7 | Нет | Пересобрать с upload key |
-| 400 | «release notes … exceed» | > 500 символов на локаль | 7 | Нет | Сократить |
-| 400 | «userFraction must be …» | Дробь вне `(0,1)` | 2 (локально) / 7 | Нет | Исправить флаги; локальная валидация не должна доводить до Play |
-| 400 | edit invalidated / `Cannot find edit` | Консоль или параллельный клиент сломали edit | 5 | Нет | Перезапустить; проверить трек |
-| 400 | «Changes cannot be sent for review automatically…» | Требуется ручная отправка | 8 | **Один раз** с `changesNotSentForReview=true` | Отправить из консоли |
-| 400 | «Changes are already in review» (при `ERROR_IF_IN_REVIEW`) | Чужое ревью в процессе | 5 | Нет | Дождаться ревью или `--on-in-review=replace` |
-| 409 | `conflict` | Конкурентное изменение | 5 | Нет | Повторить запуск |
-| Прочее | — | Непредвиденное | 1 | Нет | Баг/эскалация, приложить `editId` и лог |
+| — | `context.DeadlineExceeded`, `io.EOF`, `ECONNRESET` | Network/timeout | 6 | Yes | Rerun |
+| 500/502/503/504 | — | Play failure | 6 | Yes | Retry, then escalate |
+| 429 | `rateLimitExceeded` | Per-minute limit exceeded | 6 | Yes, with `Retry-After` | Wait |
+| 401 | `UNAUTHENTICATED` | Token not obtained/expired | 3 | No | Check credentials |
+| 403 | `PERMISSION_DENIED`, "The caller does not have permission" | No Play Console permissions | 3 | No | Grant access to the service account |
+| 403 | "API has not been used in project … or it is disabled" | API not enabled | 3 | No | Enable the API |
+| 403 | `Daily edit creation quota exceeded.` | Daily edit quota | 6 | No | Wait until the next day; remove edit loops |
+| 404 | `Application not found` | Wrong package or no access | 4 | No | Check `applicationId` and access |
+| 404 | `Track not found` | Track does not exist | 4 | No | Create the track in the console / change the name |
+| 400 | `badRequest` without a specific marker | Play validation | 7 | No | Read the message, fix it |
+| 400 | "version code … has already been used" | Reused version code | 5 | No | Bump versionCode / `--if-exists=skip` |
+| 400 | "App bundle … is not signed" / signature error | AAB not signed or wrong key | 7 | No | Rebuild with the upload key |
+| 400 | "release notes … exceed" | More than 500 characters per locale | 7 | No | Shorten |
+| 400 | "userFraction must be …" | Fraction outside `(0,1)` | 2 (local) / 7 | No | Fix the flags; local validation should prevent this |
+| 400 | edit invalidated / `Cannot find edit` | The console or a parallel client broke the edit | 5 | No | Rerun; check the track |
+| 400 | "Changes cannot be sent for review automatically…" | Manual submission required | 8 | **Once** with `changesNotSentForReview=true` | Submit from the console |
+| 400 | "Changes are already in review" (with `ERROR_IF_IN_REVIEW`) | Someone else's review is running | 5 | No | Wait for the review or `--on-in-review=replace` |
+| 409 | `conflict` | Concurrent change | 5 | No | Rerun |
+| Other | — | Unexpected | 1 | No | Bug/escalation; attach `editId` and the log |
 
-## 3. Политика ретраев
+## 3. Retry policy
 
-Применяется к идемпотентным или безопасно повторяемым шагам.
+Applies to idempotent or safely repeatable steps.
 
-| Шаг | Ретраить | Комментарий |
+| Step | Retry | Notes |
 | --- | --- | --- |
-| Получение токена | Да, 2 попытки | Затем код 3 |
-| `edits.insert` | Да, но ≤ 2 | Повторный insert инвалидирует предыдущий edit; допустимо, но расходует квоту |
-| `bundles.upload` | Да, на уровне чанков | `ResumableMedia` + `ChunkRetryDeadline`; при смерти сессии — новая сессия в том же edit |
-| `tracks.update` | Да, 5xx/429 | Валидационные — нет |
-| `edits.validate` | Да | Для `--dry-run` |
-| `edits.commit` | **Осторожно** | См. §4: сначала проверить фактическое состояние |
-| `edits.delete` | 1 попытка, отдельный контекст 15 s | Очистка не должна маскировать исходную ошибку |
+| Token retrieval | Yes, 2 attempts | Then code 3 |
+| `edits.insert` | Yes, but ≤ 2 | A repeated insert invalidates the previous edit; allowed but consumes quota |
+| `bundles.upload` | Yes, at chunk level | `ResumableMedia` + `ChunkRetryDeadline`; if the session dies, a new session in the same edit |
+| `tracks.update` | Yes, 5xx/429 | Validation errors — no |
+| `edits.validate` | Yes | For `--dry-run` |
+| `edits.commit` | **Careful** | See §4: check the actual state first |
+| `edits.delete` | 1 attempt, separate 15 s context | Cleanup must not mask the original error |
 
-Параметры backoff: `delay = min(cap, base * 2^attempt) + rand(0..1s)`, `base=1s`, `cap=32s`, максимум 5 попыток
-(как рекомендует Google для 5xx). Для 429 — приоритет `Retry-After`, если он есть.
+Backoff parameters: `delay = min(cap, base * 2^attempt) + rand(0..1s)`, `base=1s`, `cap=32s`,
+at most 5 attempts (Google's recommendation for 5xx). For 429, prefer `Retry-After` when
+present.
 
-После исчерпания — код 6 и сообщение с последней ошибкой и числом попыток.
+After exhaustion — code 6 and a message with the last error and the number of attempts.
 
-## 4. Неоднозначный коммит
+## 4. Ambiguous commit
 
-`edits.commit` может «упасть» по таймауту, хотя сервер уже применил изменения. Слепой повтор опасен: edit может
-быть уже закрыт, а повторный коммит вернёт ошибку, которую легко принять за провал.
+`edits.commit` may fail with a timeout even though the server already applied the changes. A
+blind retry is dangerous: the edit may already be closed, and a repeated commit returns an
+error that is easy to mistake for a failure.
 
-Алгоритм:
-
-```
-commit → ошибка (таймаут/5xx)?
-  → запросить релизы трека (read-only)
-  → versionCode присутствует?
-      да  → успех (review: sent/unknown), код 0
-      нет → повторить commit один раз (если ошибка не про недействительный edit)
-              → снова ошибка → код 6, приложить editId
-```
-
-Если проверка состояния сама недоступна (сеть), инструмент возвращает код 6 и **не** утверждает, что публикация
-не удалась: в сообщении — «состояние неизвестно, проверьте трек».
-
-## 5. Сообщения пользователю
-
-Формат: `<проблема>: <причина>. <действие>`.
-
-Примеры:
+Algorithm:
 
 ```
-play: доступ запрещён: у service account нет прав на com.example.app.
-      Выдайте "Release to testing tracks" в Play Console → Users and permissions.
+commit → error (timeout/5xx)?
+  → request track releases (read-only)
+  → versionCode present?
+      yes → success (review: sent/unknown), code 0
+      no  → retry commit once (if the error is not about an invalid edit)
+              → error again → code 6, attach editId
 ```
 
+If the state check itself is unavailable (network), the tool returns code 6 and does **not**
+claim that the publication failed: the message says "state unknown, check the track".
+
+## 5. User-facing messages
+
+Format: `<problem>: <cause>. <action>`.
+
+Examples:
+
 ```
-play: versionCode 42 уже существует в треке internal.
-      Поднимите versionCode и пересоберите AAB либо используйте --if-exists=skip.
+google-play-publisher: access denied: the service account has no permissions on
+      com.example.app. Grant "Release to testing tracks" in Play Console → Users and
+      permissions.
 ```
 
 ```
-play: изменения сохранены, но не отправлены на ревью.
-      Откройте Play Console → Publishing overview и нажмите "Send for review".
+google-play-publisher: versionCode 42 already exists on track internal.
+      Bump versionCode and rebuild the AAB, or use --if-exists=skip.
 ```
 
-Требования:
+```
+google-play-publisher: changes saved but not submitted for review.
+      Open Play Console → Publishing overview and click "Send for review".
+```
 
-- без стектрейсов в обычном режиме (`--debug` — можно);
-- сообщение Play приводится дословно (обрезка до 4 KiB), но не заменяет объяснение;
-- подсказка (`hint`) всегда содержит конкретное действие или ссылку на раздел документации;
-- в JSON — стабильный `error.code`, не зависящий от формулировки Play.
+Requirements:
 
-## 6. Логирование ошибок
+- no stack traces in normal mode (`--debug` may show them);
+- the Play message is quoted verbatim (truncated to 4 KiB) but does not replace the explanation;
+- the hint always contains a concrete action or a documentation link;
+- in JSON — a stable `error.code` independent of Play wording.
 
-- Уровни: `ERROR` — финальный отказ; `WARN` — ретрай, предупреждения (в т.ч. managed publishing);
-  `INFO` — фазы; `DEBUG` — детали (включается `--debug` или `GPLAY_DEBUG=1`).
-- В debug для ошибки логируются: HTTP-статус, `reason`, тело ответа Play (до 4 KiB), correlation id и номер
-  попытки — этого достаточно, чтобы разобрать инцидент без повторного запуска.
-- Поля: `http_code`, `reason`, `attempt`, `phase`, `edit_id`, `version_code`.
-- Тело ответа Play — только после редактирования (не логировать `Authorization`, токены, содержимое ключа).
-- Для аудита достаточно `edit_id` + `version_code` + времени: они однозначно идентифицируют попытку.
+## 6. Error logging
 
-## 7. Что не считается ошибкой инструмента
+- Levels: `ERROR` — final failure; `WARN` — retry, warnings (including managed publishing);
+  `INFO` — phases; `DEBUG` — details (enabled by `--debug`).
+- In debug, an error logs: HTTP status, `reason`, Play response body (up to 4 KiB),
+  correlation id and attempt number — enough to investigate without rerunning.
+- Fields: `http_code`, `reason`, `attempt`, `phase`, `edit_id`, `version_code`.
+- The Play response body is logged only after redaction (never `Authorization`, tokens or key
+  contents).
+- For auditing, `edit_id` + `version_code` + time are enough: they identify the attempt.
 
-| Событие | Трактовка |
+## 7. What is not a tool error
+
+| Event | Interpretation |
 | --- | --- |
-| Изменения «в обработке» несколько часов | Норма: Play применяет изменения асинхронно |
-| Managed publishing ждёт ручного шага | Норма при включённом режиме (кроме `internal`, на который он не действует); код 0 + предупреждение |
-| Ревью не завершено | Вне зоны ответственности CLI; отдельный мониторинг |
-| `--if-exists=skip` и версия уже в треке | Идемпотентный успех, код 0 |
+| Changes "processing" for several hours | Normal: Play applies changes asynchronously |
+| Managed publishing waits for a manual step | Normal when enabled (except `internal`, where it does not apply); code 0 + warning |
+| Review not finished | Outside the CLI's responsibility; monitor separately |
+| `--if-exists=skip` and the version is already on the track | Idempotent success, code 0 |

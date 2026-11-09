@@ -1,76 +1,79 @@
-# ADR-0003 — Cobra и слоистая структура команд
+# ADR-0003 — Cobra and a layered command structure
 
-- **Статус:** предложено (проектирование)
-- **Дата:** 2026-11-09
-- **Контекст:** инструмент будет расширяться командами (`rollout`, `promote`, метаданные), нужен предсказуемый
-  способ добавлять команды, не раздувая `main` и не смешивая CLI с HTTP.
+- **Status:** proposed (design)
+- **Date:** 2026-11-09
+- **Context:** the tool will grow with commands (`rollout`, `promote`, metadata); we need a
+  predictable way to add commands without bloating `main` or mixing CLI with HTTP.
 
-## Контекст
+## Context
 
-Сейчас достаточно одной команды `publish`, но roadmap предполагает `status`, `rollout`, `promote` и, возможно,
-работу с метаданными. Требования:
+One command `publish` is enough today, but the roadmap includes `status`, `rollout`, `promote`
+and possibly metadata management. Requirements:
 
-- единый UX: глобальные флаги, коды выхода, JSON, debug-режим для всех команд;
-- бизнес-логика не должна зависеть от фреймворка и от `androidpublisher`;
-- команды должны легко тестироваться без сети;
-- автодополнение, справка и группировка команд «из коробки»;
-- минимум зависимостей.
+- a consistent UX: global flags, exit codes, JSON, debug mode for every command;
+- business logic must not depend on the framework or on `androidpublisher`;
+- commands must be testable without network;
+- completion, help and command grouping "out of the box";
+- minimal dependencies.
 
-## Рассмотренные варианты
+## Considered options
 
-1. **`spf13/cobra` + `pflag`.** Стандарт де-факто для Go CLI (kubectl, gh, hugo): подкоманды, группы,
-   completion, генерация документации, тестируемость через `SetArgs/ExecuteContext`. Цена — зависимость и
-   некоторый бойлерплейт.
-2. **`stdlib flag` + ручная диспетчеризация.** Ноль зависимостей, полный контроль. Цена — свой парсинг
-   подкоманд, help, completion, обработка ошибок; с ростом команд быстро превращается в мини-фреймворк.
-3. **`urfave/cli`.** Проще cobra, но слабее модель вложенных команд и completion.
-4. **`alecthomas/kong`.** Декларативные структуры, мало кода, хороший help; меньше экосистема и примеров,
-   нестандартный для большинства Go-разработчиков.
+1. **`spf13/cobra` + `pflag`.** The de-facto standard for Go CLIs (kubectl, gh, hugo):
+   subcommands, groups, completion, documentation generation, testability through
+   `SetArgs/ExecuteContext`. Cost: a dependency and some boilerplate.
+2. **`stdlib flag` + manual dispatch.** Zero dependencies, full control. Cost: hand-written
+   subcommand parsing, help, completion, error handling; with more commands it quickly becomes a
+   mini-framework.
+3. **`urfave/cli`.** Simpler than cobra, but a weaker nested-command and completion model.
+4. **`alecthomas/kong`.** Declarative structs, little code, good help; smaller ecosystem and
+   less familiar to most Go developers.
 
-## Решение
+## Decision
 
-Использовать **cobra** и слоистую структуру:
+Use **cobra** and a layered structure:
 
 ```
-internal/cli   — разбор флагов, сборка команд, печать (тонкий слой)
-internal/app   — use-case'ы: publish, doctor, status (без cobra и HTTP)
-internal/play  — адаптер Play API (единственное место с androidpublisher)
+internal/cli   — flag parsing, command construction, output (thin layer)
+internal/app   — use cases: publish, doctor, status (no cobra, no HTTP)
+internal/play  — Play API adapter (the only place with androidpublisher)
 ```
 
-Правила:
+Rules:
 
-- глобальные флаги (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`, `--endpoint`) —
-  `PersistentFlags` root-команды;
-- `RunE` возвращает ошибку; `main` один раз маппит её в сообщение и код выхода через `internal/exitcode`;
-- `SilenceUsage/SilenceErrors` включены, чтобы runtime-ошибка не печатала usage;
-- дерево команд строится конструкторами, без `init()` и глобального состояния;
-- use-case получает зависимости через структуру `App` (writer'ы, часы, фабрика API).
+- global flags (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`,
+  `--endpoint`) are root `PersistentFlags`;
+- `RunE` returns an error; `main` maps it once to a message and an exit code via
+  `internal/exitcode`;
+- `SilenceUsage/SilenceErrors` are enabled so runtime errors do not print usage;
+- the command tree is built by constructors, without `init()` or global state;
+- a use case receives dependencies through the `App` struct (writers, clock, API factory).
 
-Полное описание стека — [06-stack.md](../06-stack.md#6-соглашения-по-cobra).
+The full stack description is in [06-stack.md](../06-stack.md#6-cobra-conventions).
 
-## Последствия
+## Consequences
 
-**Плюсы**
+**Pros**
 
-- добавление команды — локальное изменение: файл в `cli`, use-case в `app`, тесты;
-- единые глобальные флаги и коды выхода для всех команд;
-- автодополнение и справка без ручной работы;
-- use-case'ы тестируются с fake-API и без cobra.
+- adding a command is a local change: a file in `cli`, a use case in `app`, tests;
+- consistent global flags and exit codes for all commands;
+- completion and help without manual work;
+- use cases are tested with a fake API and without cobra.
 
-**Минусы**
+**Cons**
 
-- зависимость `cobra`/`pflag` (умеренная, стабильная);
-- бойлерплейт описания команд (short/long/example);
-- соблазн класть логику в `RunE` — пресекается ревью и правилом «`cli` не импортирует `play`».
+- the `cobra`/`pflag` dependency (moderate, stable);
+- command description boilerplate (short/long/example);
+- the temptation to put logic in `RunE` — prevented by review and the rule that `cli` does not
+  construct the Play client.
 
-**Что это меняет**
+**What this changes**
 
-- `internal/cli` содержит по файлу на команду; `root.go` — только глобальные флаги и группы;
-- `internal/app` появляется как отдельный слой (в MVP — три use-case'а);
-- тесты CLI проверяют коды выхода и JSON, а не текст справки.
+- `internal/cli` contains one file per command; `root.go` holds only global flags and groups;
+- `internal/app` appears as a separate layer (three use cases in the MVP);
+- CLI tests assert exit codes and JSON, not help text.
 
-## Когда пересмотреть
+## When to revisit
 
-- если команд станет настолько много, что понадобится плагинная архитектура (внешние бинарники);
-- если cobra начнёт мешать (например, потребуется полностью декларативная схема) — `kong` как замена при
-  сохранении слоёв `app`/`play`.
+- if there are so many commands that a plugin architecture (external binaries) is needed;
+- if cobra gets in the way (for example, a fully declarative schema is required) — `kong` can
+  replace it while keeping the `app`/`play` layers.

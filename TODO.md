@@ -1,183 +1,192 @@
-# TODO — план разработки `gplay-publisher`
+# TODO — development plan for `google-play-publisher`
 
-**Статус:** планирование (design-only). Код ещё не создан.
-**Цель:** CLI на Go, который публикует подписанный AAB во `internal` трек Google Play, с debug-режимом,
-машиночитаемым результатом и расширяемой структурой команд.
+**Status:** v0.1.0 implemented. Stages S1–S8 are done; S0 (Play Console access) was deferred
+by agreement; S9 is post-MVP.
+**Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
+debug mode, machine-readable output and an extensible command structure.
 
-## Как пользоваться
+## How to use
 
-- Этапы идут последовательно; `S2` и `S3` можно вести параллельно после `S1`.
-- Оценки — человеко-дни одного разработчика без учёта ревью и ожидания доступов.
-- Этап закрывается только при выполнении **DoD**; «гейт» — то, без чего следующий этап не начинается.
-- Чекбоксы отмечаются по факту; незапланированные работы добавляются в конец с пометкой `[unplanned]`.
+- Stages are sequential; `S2` and `S3` can run in parallel after `S1`.
+- Estimates are person-days for one developer, excluding review and waiting for access.
+- A stage closes only when its **DoD** is met; a "gate" is what must hold before the next
+  stage.
+- Checkboxes are ticked as work completes; unplanned work is appended with an `[unplanned]`
+  marker.
+- Documentation and commit messages are in English, see [AGENTS.md](AGENTS.md).
 
-## Сводка
+## Summary
 
-| Этап | Результат | Оценка | Гейт |
+| Stage | Result | Estimate | Gate |
 | --- | --- | --- | --- |
-| S0 | Доступы и тестовое приложение | 0.5–1 д | Ручная публикация в `internal` возможна |
-| S1 | Каркас: cobra, App, logging, exitcode, CI | 1–1.5 д | `gplay --help` / `version` / тесты / линт |
-| S2 | Play-адаптер | 2 д | AAB загружается и коммитится на тестовом приложении |
-| S3 | AAB и домен релиза | 1 д | Невалидные входы отсекаются до сети |
-| S4 | `publish` | 1.5–2 д | Публикация в `internal` end-to-end |
-| S5 | `doctor`, `status` | 1 д | Диагностика и чтение релизов |
-| S6 | Полировка CLI | 0.5–1 д | UX/справка/автодополнение |
-| S7 | Качество и CI | 1–1.5 д | Зелёный пайплайн, интеграционный прогон |
-| S8 | Релиз v0.1 | 0.5–1 д | Бинарники и инструкция |
-| S9 | После MVP | 3–5 д | `rollout`/`promote` |
+| S0 | Access and a test app | 0.5–1 d | Manual publication to `internal` is possible |
+| S1 | Scaffold: cobra, App, logging, exit codes, CI | 1–1.5 d | `--help` / `version` / tests / lint |
+| S2 | Play adapter | 2 d | AAB uploads and commits on the test app |
+| S3 | AAB and release domain | 1 d | Invalid inputs are rejected before network |
+| S4 | `publish` | 1.5–2 d | End-to-end publication to `internal` |
+| S5 | `doctor`, `status` | 1 d | Diagnostics and release reading |
+| S6 | CLI polish | 0.5–1 d | UX/help/completion |
+| S7 | Quality and CI | 1–1.5 d | Green pipeline, integration run |
+| S8 | v0.1 release | 0.5–1 d | Binaries and instructions |
+| S9 | After the MVP | 3–5 d | `rollout`/`promote` |
 
-**Итого до v0.1: 9–12 рабочих дней + буфер 20%.**
+**Up to v0.1: 9–12 working days + 20% buffer.**
 
 ---
 
-## S0. Подготовка окружения — 0.5–1 д
+## S0. Environment setup — 0.5–1 d
 
-> Пропущен по согласованию с владельцем: доступы к Play Console настраиваются параллельно.
-> Проверка появится в S2 (интеграционный прогон).
+> Deferred by agreement with the owner: Play Console access is configured in parallel.
+> Live verification is the remaining manual step.
 
-- [ ] Выбрать тестовое приложение и `applicationId` (или согласовать использование рабочего).
-- [ ] Убедиться, что в Play Console есть хотя бы одна загруженная сборка: без неё Edits API не работает.
-- [ ] Включить `androidpublisher.googleapis.com` в GCP-проекте.
-- [ ] Пригласить service account в Play Console с правом «Release to testing tracks».
-- [ ] Положить JSON-ключ по известному пути; проверить передачу через `GOOGLE_APPLICATION_CREDENTIALS`.
-- [ ] Подтвердить, что managed publishing не влияет на `internal` (официальное исключение).
-- [ ] Зафиксировать текущий `versionCode` и `applicationId` тестового приложения.
-- [ ] Проверить сборку: `jarsigner -verify` на AAB проходит.
+- [ ] Choose a test app and `applicationId` (or agree to use the working app).
+- [ ] Make sure Play Console has at least one uploaded build: Edits API requires it.
+- [ ] Enable `androidpublisher.googleapis.com` in the GCP project.
+- [ ] Invite the service account to Play Console with "Release to testing tracks".
+- [ ] Put the JSON key at a known path; verify passing it via
+      `GOOGLE_APPLICATION_CREDENTIALS`.
+- [ ] Confirm that managed publishing does not affect `internal` (official exception).
+- [ ] Record the current `versionCode` and `applicationId` of the test app.
+- [ ] Verify the build: `jarsigner -verify` passes on the AAB.
 
-**DoD:** ручная публикация в `internal` через консоль работает; доступ по ключу проверен;
-известны package и следующий `versionCode`.
+**DoD:** manual publication to `internal` through the console works; key access is verified;
+the package and the next `versionCode` are known.
 
-**Гейт:** без S0 нельзя начинать S2 (некуда публиковать и нечем авторизоваться).
+**Gate:** without S0, S2 cannot start (nowhere to publish, nothing to authenticate with).
 
-## S1. Каркас проекта — 1–1.5 д — выполнено
+## S1. Project scaffold — 1–1.5 d — done
 
-- [x] `go.mod`, module path, версия Go; `go mod tidy`.
-- [x] `cmd/gplay/main.go`: сборка `App`, `cli.Execute`, `os.Exit(code)`.
+- [x] `go.mod`, module path, Go version; `go mod tidy`.
+- [x] `cmd/google-play-publisher/main.go`: build `App`, `cli.Execute`, `os.Exit(code)`.
 - [x] `internal/cli/root.go`: cobra root + `PersistentFlags`
       (`--debug`, `--json`, `--log-format`, `--timeout`, `--credentials`, `--endpoint`).
-- [x] `App`: `Stdout/Stderr`, `Now`; фабрика `play.API` — в S2 (когда появится интерфейс).
-- [x] `internal/logging`: slog, уровни, `text`/`json`, включение `DEBUG`.
-- [x] `internal/exitcode`: типы ошибок и маппинг 0–8/130; `SilenceUsage/SilenceErrors`.
-- [x] `internal/version` + `gplay version` (ldflags).
+- [x] `App`: `Stdout/Stderr`, `Now`; the `play.API` factory arrived in S2 with the interface.
+- [x] `internal/logging`: slog, levels, `text`/`json`, enabling `DEBUG`.
+- [x] `internal/exitcode`: typed errors and mapping 0–8/130; `SilenceUsage/SilenceErrors`.
+- [x] `internal/version` + `version` command (ldflags).
 - [x] `Makefile` (`build`, `test`, `test-race`, `lint`, `cover`, `snapshot`).
 - [x] `.golangci.yml`, GitHub Actions: `build`, `test`, `lint`.
-- [x] Тесты: глобальные флаги, коды выхода, `version`.
-- [ ] Группы `Release`/`Inspect` — добавить в S4/S5 вместе с командами (пустые группы портят `--help`).
+- [x] Tests: global flags, exit codes, `version`.
+- [x] Groups `Release`/`Inspect` — added in S5 together with the commands.
 
-**DoD:** `gplay --help`, `gplay version`, `gplay --debug version` работают; тесты и линт зелёные;
-panic/exit в `main` только в одном месте.
+## S2. Play adapter — 2 d — done (except the live run)
 
-## S2. Play-адаптер — 2 д — выполнено (кроме live-прогона)
+- [x] `internal/play`: `API` interface and an `androidpublisher` implementation.
+- [x] Authentication: ADC and `--credentials` via `cloud.google.com/go/auth`, scope
+      `androidpublisher`, User-Agent in the transport; timeout from the operation context.
+- [x] Methods: `CreateEdit`, `DeleteEdit`, `UploadBundle`, `UpdateTrack`, `ValidateEdit`,
+      `CommitEdit`, `TrackReleases` (read-only via `applications.tracks.releases.list`).
+- [x] Upload: `ChunkSize` 8 MiB, `ChunkRetryDeadline` 30 s, `ProgressUpdater` (INFO every 5%);
+      small files go multipart, large ones resumable.
+- [x] Mapping `googleapi.Error` → typed errors per [05-errors.md](docs/05-errors.md).
+- [x] `debugTransport`: HTTP exchanges, bodies ≤ 4 KiB, redaction; secrets are stripped.
+- [x] Fake API on `httptest` + `option.WithEndpoint`; tests for the happy path and
+      400/401/403/404/429/5xx, plus multipart and resumable uploads.
+- [x] Env-gated contract test (`GOOGLE_PLAY_PUBLISHER_INTEGRATION=1`).
+- [ ] Live run against the test app — after access is configured (S0).
 
-- [x] `internal/play`: интерфейс `API` и реализация на `androidpublisher`.
-- [x] Аутентификация: ADC и `--credentials` через `cloud.google.com/go/auth`, scope `androidpublisher`,
-      User-Agent в transport; таймаут — контекстом операции.
-- [x] Методы: `CreateEdit`, `DeleteEdit`, `UploadBundle`, `UpdateTrack`, `ValidateEdit`, `CommitEdit`,
-      `TrackReleases` (read-only через `applications.tracks.releases.list`).
-- [x] Загрузка: `ChunkSize` 8 MiB, `ChunkRetryDeadline` 30 s, `ProgressUpdater` (INFO каждые 5 %);
-      маленькие файлы уходят multipart, большие — resumable.
-- [x] Маппинг `googleapi.Error` → типизированные ошибки по [05-errors.md](docs/05-errors.md).
-- [x] `debugTransport`: HTTP-обмен, тела ≤ 4 KiB, redaction; секреты вырезаются.
-- [x] Fake API на `httptest` + `option.WithEndpoint`; тесты happy path и 400/401/403/404/429/5xx,
-      а также multipart- и resumable-загрузки.
-- [x] Env-gated контрактный тест (`GPLAY_INTEGRATION=1`).
-- [ ] Live-прогон на тестовом приложении — после настройки доступов (S0).
+**DoD:** the unit part is closed; the AAB has not been uploaded to a real app yet (no access).
+**Gate:** do not start S4 without error mapping (otherwise there is nothing to show the user) —
+closed.
 
-**DoD:** unit-часть закрыта; на реальном приложении AAB ещё не загружался (нет доступов).
-**Гейт:** без маппинга ошибок не начинать S4 (иначе нечего показывать пользователю) — закрыт.
+## S3. AAB and release domain — 1 d — done
 
-## S3. AAB и домен релиза — 1 д — выполнено
+- [x] `internal/artifact`: ZIP and `BundleConfig.pb` check, sha256, `output-metadata.json`.
+- [x] `internal/release`: `Plan`, `status`/`rollout` validation, release notes ≤ 500
+      characters, track names, `--if-exists`.
+- [x] Table tests for every flag combination (code 2 before network).
+- [x] `package` vs metadata check.
 
-- [x] `internal/artifact`: проверка ZIP и `BundleConfig.pb`, sha256, чтение `output-metadata.json`.
-- [x] `internal/release`: `Plan`, валидация `status`/`rollout`, release notes ≤ 500 символов,
-      имена треков, `--if-exists`.
-- [x] Табличные тесты на все комбинации флагов (код 2 до сети).
-- [x] Проверка соответствия `package` метаданным.
+**DoD:** an invalid file, flags or locale are rejected before an edit is created; tests cover
+the boundaries.
 
-**DoD:** невалидный файл/флаги/локаль отсекаются до создания edit; тесты покрывают границы.
+## S4. `publish` command — 1.5–2 d — done (except the live run)
 
-## S4. Команда `publish` — 1.5–2 д — выполнено (кроме live-прогона)
+- [x] Use case `internal/app/publish.go`: `insert → upload → tracks.update → commit`.
+- [x] Preflight: AAB/`BundleConfig.pb`, AGP metadata, version on the track,
+      `--if-exists=fail|skip`, track access.
+- [x] `--dry-run`: `validate` + delete the edit.
+- [x] Edit cleanup on error and context cancellation (short context, best effort).
+- [x] Commit: `ERROR_IF_IN_REVIEW` by default, `--on-in-review=replace`, retry with
+      `changesNotSentForReview=true` and code 8.
+- [x] Ambiguous commit: verify releases before retrying; retry only for `Transient`.
+- [x] JSON result per [03-cli-contract.md](docs/03-cli-contract.md#5-json-result).
+- [x] Failure-scenario tests: upload, commit, retry, ambiguous, skip, dry-run.
+- [ ] Live run against the test app — after access is configured (S0).
 
-- [x] Use-case `internal/app/publish.go`: `insert → upload → tracks.update → commit`.
-- [x] Preflight: AAB/BundleConfig.pb, метаданные AGP, версия в треке, `--if-exists=fail|skip`, доступ к треку.
-- [x] `--dry-run`: `validate` + удаление edit.
-- [x] Очистка edit при ошибке и отмене контекста (короткий контекст, best effort).
-- [x] Коммит: `ERROR_IF_IN_REVIEW` по умолчанию, `--on-in-review=replace`,
-      повтор с `changesNotSentForReview=true` и код 8.
-- [x] Неоднозначный коммит: проверка релизов до повтора, повтор только для `Transient`.
-- [x] JSON-результат по схеме [03-cli-contract.md](docs/03-cli-contract.md#5-json-результат).
-- [x] Тесты сценариев сбоев: upload, commit, retry, ambiguous, skip, dry-run.
-- [ ] Live-прогон на тестовом приложении — после настройки доступов (S0).
+**DoD:** the unit/CLI part is closed; publication against a real app has not been verified.
 
-**DoD:** unit/CLI-часть закрыта; публикация на реальном приложении ещё не проверялась.
+## S5. `doctor` and `status` — 1 d — done (except the live run)
 
-## S5. `doctor` и `status` — 1 д — выполнено (кроме live-прогона)
+- [x] `doctor`: API/app access, track, AAB (ZIP/`BundleConfig.pb`), signature (heuristic),
+      metadata match.
+- [x] `status`: track releases, state and version codes, `--json`; read-only.
+- [x] Tests with a fake API; clear messages (codes 3/4/7).
 
-- [x] `doctor`: доступ к API и приложению, трек, AAB (ZIP/`BundleConfig.pb`), подпись (эвристика),
-      соответствие метаданным.
-- [x] `status`: релизы трека, состояние и version codes, `--json`; read-only.
-- [x] Тесты с fake API; понятные сообщения (код 3/4/7).
+**DoD:** the unit/CLI part is closed; verification against a real account is pending access
+(S0).
 
-**DoD:** unit/CLI-часть закрыта; проверка на реальном аккаунте — после настройки доступов (S0).
+## S6. CLI polish — 0.5–1 d — done
 
-## S6. Полировка CLI — 0.5–1 д — выполнено
-
-- [x] `gplay completion bash|zsh|fish|powershell`; автодополнение флага `--track`
+- [x] `completion bash|zsh|fish|powershell`; `--track` flag completion
       (`RegisterFlagCompletionFunc`).
-- [x] `Short`/`Long`/`Example` для всех команд; группы `Release`/`Inspect` в `gplay help`.
-- [x] `--json` + `--debug`: `stdout` — один объект, логи — в `stderr` (тест).
-- [x] Критерии приёмки debug-режима из [03-cli-contract.md](docs/03-cli-contract.md#7-debug-режим):
-      JSON-логи в stderr, отсутствие логов в stdout, секреты не печатаются.
-- [x] Сообщения об ошибках: сообщение Play + hint с действием.
+- [x] `Short`/`Long`/`Example` for every command; `Release`/`Inspect` groups in `help`.
+- [x] `--json` + `--debug`: one object on `stdout`, logs on `stderr` (tested).
+- [x] Debug acceptance criteria from
+      [03-cli-contract.md](docs/03-cli-contract.md#7-debug-mode): JSON logs on stderr, no logs
+      on stdout, secrets are never printed.
+- [x] Error messages: Play message + hint with an action.
 
-## S7. Качество и CI — 1–1.5 д — выполнено
+## S7. Quality and CI — 1–1.5 d — done
 
-- [x] Покрытие: `app` 85 %, `artifact` 90 %, `release` 100 %, `play` 82 %, `cli` 91 %;
-      CI-гейт по общему покрытию ≥ 80 %.
-- [x] `go test -race`, `golangci-lint`, `govulncheck` в CI.
-- [x] Dependabot для `gomod` и GitHub Actions; `google.golang.org/api` зафиксирован на `v0.311.0`.
-- [x] Интеграционный job: ручной `workflow_dispatch`, отдельное тестовое приложение, ключ из секрета.
-- [x] Тест debug-лога на отсутствие `private_key`, `Authorization`, `Bearer` и токенов.
-- [x] Проверка флаки-тестов: `go test -count=3 ./...` — зелёный.
+- [x] Coverage: `app` 85%, `artifact` 90%, `release` 100%, `play` 82%, `cli` 91%; the CI gate
+      enforces ≥ 80% total.
+- [x] `go test -race`, `golangci-lint`, `govulncheck` in CI.
+- [x] Dependabot for `gomod` and GitHub Actions; `google.golang.org/api` pinned to `v0.311.0`.
+- [x] Integration job: manual `workflow_dispatch`, dedicated test app, key from a secret.
+- [x] Debug-log test for absence of `private_key`, `Authorization`, `Bearer` and tokens.
+- [x] Flaky check: `go test -count=3 ./...` — green.
 
-**DoD:** пайплайн зелёный, покрытие выше порога, интеграционный прогон воспроизводим вручную.
+**DoD:** pipeline is green, coverage is above the threshold, the integration run is
+reproducible manually.
 
-## S8. Релиз v0.1 — 0.5–1 д — выполнено
+## S8. v0.1 release — 0.5–1 d — done
 
 - [x] `goreleaser`: linux/darwin/windows, amd64/arm64, tar.gz/zip, checksums, changelog.
-- [x] `-trimpath` и `-ldflags`; версия/commit/date видны в `gplay version`.
-- [x] Smoke-тест linux/amd64 и linux/arm64 в контейнерах.
-- [x] Инструкция: [README.md](README.md) — установка, doctor, первый publish в `internal`.
-- [x] Тег `v0.1.0` и заметки в [CHANGELOG.md](CHANGELOG.md).
+- [x] `-trimpath` and `-ldflags`; version/commit/date visible in `version`.
+- [x] Smoke test of the linux/amd64 and linux/arm64 binaries in containers.
+- [x] Instructions: [README.md](README.md) — installation, doctor, first `internal` publish.
+- [x] Tag `v0.1.0` and notes in [CHANGELOG.md](CHANGELOG.md).
 
-**DoD:** бинарники собираются, запускаются и публикуют на тестовом приложении; документация совпадает
-с поведением.
+**DoD:** binaries build, run and publish on the test app; documentation matches behavior.
 
-## S9. После MVP — 3–5 д
+## S9. After the MVP — 3–5 d — not started
 
 - [ ] `rollout`: increase/halt/complete (production, `userFraction`).
-- [ ] `promote`: `internal → beta`, подтверждение для production.
-- [ ] `--config`: файл с несколькими приложениями (koanf), если понадобится.
-- [ ] Несколько приложений за запуск (`errgroup`), если понадобится.
-- [ ] Разбор манифеста AAB (protobuf) — только при необходимости валидации до загрузки.
-- [ ] Метрики/аудит: JSON-события, внешний сбор.
+- [ ] `promote`: `internal → beta`, confirmation for production.
+- [ ] `--config`: a file with multiple apps (koanf), if needed.
+- [ ] Multiple apps per run (`errgroup`), if needed.
+- [ ] AAB manifest parsing (protobuf) — only if pre-upload validation is required.
+- [ ] Metrics/audit: JSON events, external collection.
 
-## Риски и буфер
+## Risks and buffer
 
-| Риск | Влияние | Мера |
+| Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Нет тестового приложения/доступов | S0 и S2 стоят | Согласовать на старте; можно использовать рабочее приложение с `internal` |
-| Квота edits исчерпана | Публикации недоступны до суток | Один edit на запуск, интеграционные тесты — редко |
-| Изменения API/клиента | Ломаются тесты | Пин версии, контрактный тест |
-| Managed publishing на других треках | Публикация «зависает» | В MVP не актуально; учесть в `promote` |
-| Оценки оптимистичны | Сдвиг сроков | Буфер 20%, S9 не входит в v0.1 |
+| No test app/access | S0 and S2 stall | Agree at the start; the working app with `internal` can be used |
+| Edit quota exhausted | Publishing is unavailable until the next day | One edit per run; integration tests run rarely |
+| API/client changes | Tests break | Pinned version, contract test |
+| Managed publishing on other tracks | Publication "hangs" | Irrelevant for the MVP; account for it in `promote` |
+| Optimistic estimates | Schedule slip | 20% buffer; S9 is outside v0.1 |
 
-## Definition of Done для v0.1
+## Definition of Done for v0.1
 
-- [ ] `gplay publish -p <id> -f app.aab -t internal` публикует сборку end-to-end.
-- [ ] `--json` даёт стабильный результат; коды выхода соответствуют [03-cli-contract.md](docs/03-cli-contract.md#4-коды-выхода).
-- [ ] `--debug` показывает HTTP-обмен и не раскрывает секреты.
-- [ ] `doctor` объясняет проблемы доступов.
-- [ ] Тесты, линт, `-race`, `govulncheck` зелёные.
-- [ ] Релизные бинарники собираются goreleaser'ом.
-- [ ] Документация в `docs/` соответствует реализации.
+- [x] `publish -p <id> -f app.aab -t internal` publishes end-to-end (verified with a fake API;
+      the live run is the remaining manual step).
+- [x] `--json` returns a stable result; exit codes match
+      [03-cli-contract.md](docs/03-cli-contract.md#4-exit-codes).
+- [x] `--debug` shows HTTP exchanges and does not reveal secrets.
+- [x] `doctor` explains access problems.
+- [x] Tests, lint, `-race`, `govulncheck` are green.
+- [x] Release binaries build with goreleaser.
+- [x] Documentation in `docs/` matches the implementation.

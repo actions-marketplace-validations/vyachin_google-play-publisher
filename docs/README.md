@@ -1,94 +1,88 @@
-# gplay-publisher — публикация подписанного AAB в Google Play
+# google-play-publisher — publishing signed AABs to Google Play
 
-**Статус:** проектирование (design-only). Код намеренно не создаётся: пакет документов фиксирует ответ на вопрос «возможно ли это», границы применимости и контракт будущего CLI.
+**Status:** implemented as v0.1.0. The executable is `google-play-publisher`.
 
-## Короткий ответ
+## Short answer
 
-**Да, возможно.** Публикация подписанного AAB в Google Play полностью автоматизируется через
-[Google Play Developer Publishing API v3](https://developers.google.com/android-publisher) (`androidpublisher.googleapis.com`).
-Нужный сценарий покрывается одной транзакционной «правкой» (edit):
+**Yes, it is possible.** Publishing a signed AAB to Google Play is fully automated through the
+[Google Play Developer Publishing API v3](https://developers.google.com/android-publisher)
+(`androidpublisher.googleapis.com`). The whole flow is one transactional edit:
 
 ```
 edits.insert → bundles.upload → tracks.update → edits.commit
 ```
 
-Для Go есть автогенерируемый клиент [`google.golang.org/api/androidpublisher/v3`](https://pkg.go.dev/google.golang.org/api/androidpublisher/v3)
-(актуальная версия на момент проектирования — `v0.311.0`, 04.11.2026). Он содержит все необходимые вызовы,
-включая resumable-загрузку, `changesNotSentForReview` и `changesInReviewBehavior`.
+For Go there is a generated client,
+[`google.golang.org/api/androidpublisher/v3`](https://pkg.go.dev/google.golang.org/api/androidpublisher/v3)
+(`v0.311.0` at design time). It covers every call we need, including resumable uploads,
+`changesNotSentForReview` and `changesInReviewBehavior`.
 
-Ориентировочная трудоёмкость MVP: 1–2 дня на `publish` + `doctor` с тестами; 1 неделя — до production-grade
-(ретраи, разбор ошибок Play, CI, документация для команды).
+## What the API cannot do
 
-## Чего через API сделать нельзя
+These are platform limits, not gaps in the tool. Accept them before building further.
 
-Это жёсткие ограничения платформы, а не недоработка инструмента. Их нужно принять до начала реализации.
-
-| Ограничение | Следствие для инструмента |
+| Limit | Consequence for the tool |
 | --- | --- |
-| Приложение должно уже существовать в Play Console и иметь хотя бы одну загруженную сборку | Первую публикацию нового приложения делает человек через Play Console ([Edits](https://developers.google.com/android-publisher/edits)) |
-| Нельзя создать приложение, сменить статус «published → unpublished», заполнить юридические согласия | Эти действия остаются в Play Console |
-| При managed publishing публикация в тестовых/продакшен-треках задерживается | На `internal` это не распространяется: внутренние сборки обычно доступны сразу. Для `beta`/`production` публикация была бы ручной |
-| Параллельная работа в Play Console и через API ломает edit | Инструмент падает быстро и просит повторить запуск; конкурентные изменения не «мержатся» |
-| Один пользователь — один активный edit на приложение | Два одновременных запуска в CI недопустимы; нужен concurrency-lock на уровне пайплайна |
-| Правила Google Play Developer API | Нельзя предлагать этот инструмент третьим лицам как сервис публикации ([API Usage Instructions](https://developers.google.com/android-publisher/api_usage)) |
-| Подпись | Инструмент **не подписывает** AAB; он публикует уже подписанный артефакт (upload key / Play App Signing) |
+| The app must already exist in Play Console and have at least one uploaded build | A brand-new app is published by a human through Play Console ([Edits](https://developers.google.com/android-publisher/edits)) |
+| The API cannot create an app, unpublish it, or accept legal declarations | Those actions stay in Play Console |
+| Managed publishing holds releases on closed/open testing and production | `internal` is not covered; other tracks may need a manual "Publish changes" |
+| Using Play Console while an edit is active invalidates the edit | The tool fails fast and asks for a rerun; concurrent changes are never merged |
+| One active edit per user per app | Two CI runs at the same time are forbidden; use a pipeline concurrency lock |
+| Google Play Developer API terms | The tool must not be offered as a publishing service to third parties ([API Usage Instructions](https://developers.google.com/android-publisher/api_usage)) |
+| Signing | The tool **does not sign** AABs; it publishes an already signed artifact (upload key / Play App Signing) |
 
-## Принятые решения (2026-11-09)
+## What the tool does (MVP scope)
 
-| Решение | Следствие |
+1. Validates the artifact and access (`doctor`).
+2. Uploads a signed AAB to the `internal` track.
+3. Sets the release status: `completed` by default, or `draft`; staged rollouts are
+   outside the MVP.
+4. Attaches localized release notes.
+5. Commits the edit and returns a machine-readable result (version code, sha256, status,
+   edit id).
+6. Handles state conflicts safely (invalidated edit, reused version code) and does not wait
+   for review: `internal` builds are usually available immediately.
+7. Supports `--debug`: detailed logs of every phase and HTTP exchange on `stderr`, with
+   secrets redacted.
+
+## Non-goals of the MVP
+
+- store listing management (icons, screenshots, descriptions);
+- tester groups and tester lists;
+- publishing to `beta`/`production`, staged rollouts and cross-track promotion
+  (`rollout`/`promote` — after the MVP);
+- signing and building AABs (that is Gradle/bundletool);
+- creating an app and its first publication;
+- APK support (AAB only);
+- a local state database or "smart" migrations — the tool is stateless
+  (see [ADR-0002](adr/0002-stateless-single-edit.md)).
+
+## Key decisions
+
+| Decision | Document |
 | --- | --- |
-| Публикуем всегда во `internal` | MVP не трогает `beta` и `production`; флаг `--track` остаётся, но другие треки — вне MVP |
-| Аутентификация — JSON-ключ service account | Инструмент получает путь к файлу через `GOOGLE_APPLICATION_CREDENTIALS` или `--credentials`; выпуск и ротация ключа — вне scope ([Setup](04-play-console-setup.md#4-передача-json-ключа-приложению)) |
-| Managed publishing | На `internal` не действует (официальное исключение), для MVP не блокер; при выходе на другие треки — учесть ([подробно](04-play-console-setup.md#6-managed-publishing)) |
-| Debug-режим обязателен | `--debug` (`-d`, `GPLAY_DEBUG=1`): HTTP-обмен, ретраи, тела ошибок — в `stderr`; секреты редактируются ([CLI](03-cli-contract.md#7-debug-режим)) |
+| Official Go client + Edits API instead of hand-written REST or fastlane | [ADR-0001](adr/0001-androidpublisher-go-client.md) |
+| Stateless model, one edit per run, idempotency by version code | [ADR-0002](adr/0002-stateless-single-edit.md) |
+| Never cancel changes in review by default (`ERROR_IF_IN_REVIEW`) | [Architecture](02-architecture.md#5-review-policy) |
+| Cobra with layered `cli → app → play` structure | [Stack](06-stack.md), [ADR-0003](adr/0003-cobra-command-layout.md) |
+| CLI contract, exit codes, JSON for CI | [CLI](03-cli-contract.md) |
+| Play Console, GCP, key passing and signing setup | [Setup](04-play-console-setup.md) |
+| Play error catalog and retry policy | [Errors](05-errors.md) |
 
-## Что делает инструмент (scope MVP)
+## Documents
 
-1. Проверяет артефакт и доступы (`doctor`).
-2. Загружает подписанный AAB во внутренний трек `internal`.
-3. Выставляет статус релиза: `completed` (обычный дефолт) или `draft`; поэтапный роллаут — вне MVP.
-4. Прикладывает release notes по локалям.
-5. Коммитит правку и возвращает машиночитаемый результат (version code, sha256, статус, edit id).
-6. Безопасно обрабатывает конфликты состояния (инвалидированный edit, повтор versionCode) и не ждёт ревью:
-   сборки в `internal` обычно доступны сразу.
-7. Поддерживает `--debug`: детальный лог каждого шага и HTTP-обмена в `stderr`, с редактированием секретов.
+- [01 — API capabilities and limits](01-api-feasibility.md)
+- [02 — Architecture](02-architecture.md)
+- [03 — CLI contract](03-cli-contract.md)
+- [04 — Play Console and access setup](04-play-console-setup.md)
+- [05 — Errors and retries](05-errors.md)
+- [06 — Stack and project structure](06-stack.md)
+- [ADR-0001 — Go client and Edits API](adr/0001-androidpublisher-go-client.md)
+- [ADR-0002 — Statelessness and one edit](adr/0002-stateless-single-edit.md)
+- [ADR-0003 — Cobra and layered commands](adr/0003-cobra-command-layout.md)
+- [Development plan](../TODO.md)
 
-## Non-goals MVP
-
-- управление store listing (иконки, скриншоты, описания);
-- управление тестовыми группами и списками тестировщиков;
-- публикация в `beta`/`production`, поэтапный роллаут и promotion между треками (`rollout`/`promote` — после MVP);
-- подпись AAB и сборка (это Gradle/bundletool);
-- создание приложения и первая публикация;
-- работа с APK (только AAB);
-- локальная база состояния и «умные» миграции — инструмент stateless (см. [ADR-0002](adr/0002-stateless-single-edit.md)).
-
-## Ключевые проектные решения
-
-| Решение | Документ |
-| --- | --- |
-| Официальный Go-клиент + Edits API, а не самописный REST или fastlane | [ADR-0001](adr/0001-androidpublisher-go-client.md) |
-| Stateless-модель, один edit на запуск, идемпотентность по versionCode | [ADR-0002](adr/0002-stateless-single-edit.md) |
-| По умолчанию не отменять changes in review (`ERROR_IF_IN_REVIEW`) | [Архитектура](02-architecture.md#5-политика-ревью) |
-| Cobra + слои `cli → app → play` | [Стек](06-stack.md), [ADR-0003](adr/0003-cobra-command-layout.md) |
-| CLI-контракт, коды выхода, JSON для CI | [CLI](03-cli-contract.md) |
-| Настройка Play Console, GCP, передача ключа, подпись | [Setup](04-play-console-setup.md) |
-| Каталог ошибок Play и политика ретраев | [Ошибки](05-errors.md) |
-
-## Документы
-
-- [01 — Возможности и ограничения API](01-api-feasibility.md)
-- [02 — Архитектура](02-architecture.md)
-- [03 — Контракт CLI](03-cli-contract.md)
-- [04 — Настройка Play Console и доступов](04-play-console-setup.md)
-- [05 — Ошибки и ретраи](05-errors.md)
-- [06 — Стек и структура проекта](06-stack.md)
-- [ADR-0001 — Go-клиент и Edits API](adr/0001-androidpublisher-go-client.md)
-- [ADR-0002 — Stateless и один edit](adr/0002-stateless-single-edit.md)
-- [ADR-0003 — Cobra и слои команд](adr/0003-cobra-command-layout.md)
-- [План разработки по этапам](../TODO.md)
-
-Внешние источники, на которые опирается проект:
+External sources the project relies on:
 
 - [Google Play Developer API — Edits](https://developers.google.com/android-publisher/edits)
 - [Google Play Developer API — APKs and Tracks](https://developers.google.com/android-publisher/tracks)
@@ -96,12 +90,14 @@ edits.insert → bundles.upload → tracks.update → edits.commit
 - [Google Play Developer API — Quotas](https://developers.google.com/android-publisher/quotas)
 - [Concurrency considerations](https://developers.google.com/android-publisher/concurrency-considerations)
 - [API Usage Instructions](https://developers.google.com/android-publisher/api_usage)
-- [Play Console Help — размеры приложений](https://support.google.com/googleplay/android-developer/answer/9859372)
+- [Play Console Help — app size limits](https://support.google.com/googleplay/android-developer/answer/9859372)
 
-## Оставшиеся вопросы
+## Remaining questions
 
-1. **Формат release notes.** Предлагается JSON-файл `{"en-US": "...", "ru-RU": "..."}`; альтернатива — каталог
-   `<locale>.txt`, как в fastlane.
-2. **Нужны ли `promote`/`rollout`** в ближайшей итерации или достаточно `publish` в `internal`.
-3. **Другие треки.** Для `internal` managed publishing не важен; если позже появятся `beta`/`production`,
-   понадобится решение, как публиковать после ревью (ручной «Publish changes» либо выключенный managed publishing).
+1. **Release notes format.** A JSON file `{"en-US": "...", "ru-RU": "..."}` is implemented;
+   a `<locale>.txt` directory (fastlane style) is still an option.
+2. **Do we need `promote`/`rollout`** in the next iteration, or is `publish` to `internal`
+   enough?
+3. **Other tracks.** Managed publishing does not matter for `internal`; if `beta`/`production`
+   are added, decide how to publish after review (manual "Publish changes" or managed
+   publishing disabled).

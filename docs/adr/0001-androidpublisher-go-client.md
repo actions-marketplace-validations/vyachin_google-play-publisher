@@ -1,70 +1,79 @@
-# ADR-0001 — Go-клиент `google.golang.org/api/androidpublisher/v3` и Edits API
+# ADR-0001 — Go client `google.golang.org/api/androidpublisher/v3` and the Edits API
 
-- **Статус:** предложено (проектирование)
-- **Дата:** 2026-11-09
-- **Контекст:** нужен консольный инструмент на Go для публикации подписанного AAB в Google Play.
+- **Status:** proposed (design)
+- **Date:** 2026-11-09
+- **Context:** we need a Go CLI that publishes a signed AAB to Google Play.
 
-## Контекст
+## Context
 
-Требуется: загрузить AAB, объявить релиз в треке, отправить изменения на ревью, вернуть машиночитаемый
-результат. Всё это делает Google Play Developer Publishing API v3 через транзакционную модель edits.
-Нужно выбрать способ работы с API и оценить риски.
+We need to: upload an AAB, declare a release on a track, submit changes for review, and
+return a machine-readable result. All of this is done by the Google Play Developer Publishing
+API v3 through its transactional edits model. We need to choose how to talk to the API and
+assess the risks.
 
-Ограничения:
+Constraints:
 
-- инструмент должен быть одним статическим бинарником без Ruby/JVM-рантайма;
-- нужна resumable-загрузка больших файлов;
-- нужны новые параметры коммита (`changesInReviewBehavior`, `changesNotSentForReview`);
-- публикация — редкая операция (единицы в день), производительность не критична, важна надёжность и
-  предсказуемость ошибок.
+- the tool must be a single static binary without a Ruby/JVM runtime;
+- resumable uploads of large files are required;
+- the new commit parameters (`changesInReviewBehavior`, `changesNotSentForReview`) are
+  required;
+- publishing is rare (a few times a day); performance is not critical, reliability and
+  predictable errors are.
 
-## Рассмотренные варианты
+## Considered options
 
-1. **Официальный Go-клиент** `google.golang.org/api/androidpublisher/v3` (модуль `google.golang.org/api`).
-   Генерируется из discovery-документа, покрывает `edits`, `bundles`, `tracks`, `commit` с нужными
-   параметрами, поддерживает `ResumableMedia` и `ChunkRetryDeadline`.
-2. **Самописный REST-клиент** на `net/http` + `golang.org/x/oauth2`. Полный контроль, доступ к любым полям
-   сразу, но нужно самостоятельно реализовать resumable upload (включая 308/404/410), пагинацию, разбор
-   `googleapi.Error`, обновление при изменениях API.
-3. **fastlane `supply`** (Ruby) или **Gradle Play Publisher** (JVM). Зрелые, но добавляют чужой рантайм и
-   конфигурационный слой; GPP вообще привязан к Gradle-сборке.
-4. **Неофициальные Go-обёртки.** Меньше кода, но нет гарантий поддержки и безопасности.
+1. **Official Go client** `google.golang.org/api/androidpublisher/v3` (module
+   `google.golang.org/api`). Generated from the discovery document, covers `edits`, `bundles`,
+   `tracks`, `commit` with the required parameters, supports `Media`/resumable uploads and
+   chunk retry deadlines.
+2. **Hand-written REST client** on `net/http` + `golang.org/x/oauth2`. Full control and
+   immediate access to any new field, but we would implement resumable upload (including
+   308/404/410), pagination, `googleapi.Error` parsing and API changes ourselves.
+3. **fastlane `supply`** (Ruby) or **Gradle Play Publisher** (JVM). Mature, but they add a
+   foreign runtime and configuration layer; GPP is tied to a Gradle build.
+4. **Unofficial Go wrappers.** Less code, but no maintenance or security guarantees.
 
-## Решение
+## Decision
 
-Использовать **вариант 1**: официальный Go-клиент и Edits API, с тонкой обёрткой `internal/play`
-(интерфейс `API` + реализация), чтобы:
+Use **option 1**: the official Go client and the Edits API, behind a thin `internal/play`
+wrapper (an `API` interface plus an implementation) so that:
 
-- изолировать типы Google-клиента от остального кода;
-- подменять реализацию в тестах (`httptest` + `option.WithEndpoint`);
-- при необходимости заменить клиент на самописный REST без переписывания CLI и домена.
+- Google client types are isolated from the rest of the code;
+- the implementation can be replaced in tests (`httptest` + `option.WithEndpoint`);
+- if needed, the client can be swapped for hand-written REST without rewriting the CLI or the
+  domain.
 
-Версия `google.golang.org/api` фиксируется в `go.mod` и обновляется осознанно, с прогоном контрактных тестов.
+The `google.golang.org/api` version is pinned in `go.mod` and updated deliberately, with
+contract tests.
 
-## Последствия
+## Consequences
 
-**Плюсы**
+**Pros**
 
-- минимум кода: OAuth, retry-транспорт, resumable upload, типы — из коробки;
-- покрытие всех нужных методов, включая новые параметры коммита (проверено на `v0.311.0`);
-- тестируемость через подмену endpoint и token source.
+- minimal code: OAuth, retry transport, resumable upload and types out of the box;
+- coverage of every required method, including the new commit parameters (verified on
+  `v0.311.0`);
+- testability by replacing the endpoint and the token source.
 
-**Минусы и риски**
+**Cons and risks**
 
-- пакет версии `v0`, структуры могут меняться между релизами → пин версии и контрактные тесты;
-- Google в [Client Libraries](https://developers.google.com/android-publisher/libraries) перечисляет только
-  Java и Python, то есть Go-путь не «первоклассный» → при отставании клиента допускается точечный вызов
-  через `svc.BasePath`/`net/http` для конкретного поля;
-- генератор иногда отстаёт с новыми полями → проверять наличие нужных опций перед релизом.
+- the package is `v0`, so structs may change between releases → pin the version and run
+  contract tests;
+- Google lists only Java and Python in
+  [Client Libraries](https://developers.google.com/android-publisher/libraries), so the Go path
+  is not "first class" → if the client lags, a spot call via `svc.BasePath`/`net/http` for one
+  field is acceptable;
+- the generator sometimes lags with new fields → check that the needed options exist before a
+  release.
 
-**Что это меняет в коде**
+**What this changes in the code**
 
-- `internal/play` — единственное место импорта `androidpublisher`;
-- CLI зависит от интерфейса, а не от `*androidpublisher.Service`;
-- тесты не ходят в реальный Play, кроме отдельного интеграционного набора.
+- `internal/play` is the only place that imports `androidpublisher`;
+- the CLI depends on the interface, not on `*androidpublisher.Service`;
+- tests never hit real Play, except the separate integration suite.
 
-## Когда пересмотреть
+## When to revisit
 
-- клиент перестаёт генерироваться или ломает совместимость без возможности зафиксировать версию;
-- появляется поле/метод, которого нет в клиенте и которое нужно «сейчас» (тогда — локальный REST-вызов);
-- Google выпускает официальный Go-клиент Play API.
+- the client stops being generated or breaks compatibility without a way to pin a version;
+- a field or method is missing from the client and is needed now (then use a local REST call);
+- Google publishes an official Go client for the Play API.

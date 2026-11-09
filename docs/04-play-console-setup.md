@@ -1,72 +1,80 @@
-# 04 — Настройка Play Console, GCP и подписи
+# 04 — Play Console, GCP and signing setup
 
-Инструкция для человека, который вводит инструмент в эксплуатацию. Пока она не выполнена, `gplay doctor`
-будет падать с кодом 3 или 4.
+Instructions for the person who puts the tool into service. Until this is done,
+`google-play-publisher doctor` fails with code 3 or 4.
 
-## 1. Предусловия
+## 1. Prerequisites
 
-| Условие | Почему |
+| Requirement | Why |
 | --- | --- |
-| Приложение уже создано в Play Console и имеет хотя бы одну загруженную сборку | API работает только с существующими приложениями |
-| Первая публикация приложения выполнена вручную (включая юридические декларации) | API не умеет публиковать приложение и принимать согласия |
-| AAB собран и подписан upload key | Инструмент не подписывает артефакты |
-| Известен `applicationId` | Это ключ всех вызовов API |
+| The app already exists in Play Console and has at least one uploaded build | The API only works with existing apps |
+| The first app publication was done manually (including legal declarations) | The API cannot publish an app or accept consents |
+| The AAB is built and signed with the upload key | The tool does not sign artifacts |
+| The `applicationId` is known | It is the key of every API call |
 
-## 2. Google Cloud: проект и API
+## 2. Google Cloud: project and API
 
-1. Создать или выбрать проект в [Google Cloud Console](https://console.cloud.google.com/projectcreate).
-2. Включить **Google Play Developer API**:
-   [консоль API](https://console.developers.google.com/apis/api/androidpublisher.googleapis.com/) → Enable.
-3. Создать service account (`gplay-publisher`) в разделе IAM → Service Accounts.
+1. Create or select a project in
+   [Google Cloud Console](https://console.cloud.google.com/projectcreate).
+2. Enable **Google Play Developer API**:
+   [API console](https://console.developers.google.com/apis/api/androidpublisher.googleapis.com/)
+   → Enable.
+3. Create a service account (`google-play-publisher`) under IAM → Service Accounts.
 
-> Связывать GCP-проект с аккаунтом разработчика в Play Console больше не требуется
-> ([Getting Started](https://developers.google.com/android-publisher/getting_started)), но service account
-> всё равно добавляется пользователем в Play Console.
+> Linking a GCP project to the Play developer account is no longer required
+> ([Getting Started](https://developers.google.com/android-publisher/getting_started)), but
+> the service account still has to be added to Play Console as a user.
 
-## 3. Play Console: доступ service account
+## 3. Play Console: service account access
 
-1. Открыть [Users and permissions](https://play.google.com/console/users-and-permissions).
-2. **Invite new users** → email service account (`gplay-publisher@<project>.iam.gserviceaccount.com`).
-3. Выдать минимально необходимые права:
+1. Open [Users and permissions](https://play.google.com/console/users-and-permissions).
+2. **Invite new users** → the service account email
+   (`google-play-publisher@<project>.iam.gserviceaccount.com`).
+3. Grant the minimum required permissions:
 
-| Право | Зачем | Обязательность |
+| Permission | Purpose | Required |
 | --- | --- | --- |
-| Release to testing tracks | `internal` | **Да** (для MVP достаточно только его) |
-| Release to production, exclude devices, and use Play App Signing | `production`, роллауты | Нет в MVP |
-| Manage store presence | только если позже добавим listing | Нет |
-| Admin / Owner | — | **Нет, никогда** |
+| Release to testing tracks | `internal` | **Yes** (enough for the MVP) |
+| Release to production, exclude devices, and use Play App Signing | `production`, rollouts | Not in the MVP |
+| Manage store presence | only if listings are added later | No |
+| Admin / Owner | — | **No, never** |
 
-4. Ограничить доступ конкретными приложениями (App permissions), если аккаунт ведёт несколько приложений.
-5. Отдельного подтверждения для service account не требуется — доступ активируется сразу.
+4. Restrict access to specific apps (App permissions) if the account manages several apps.
+5. No separate acceptance is needed for a service account — access is active immediately.
 
-Проверка: `gplay doctor --package <applicationId>` должен пройти все пункты.
+Check: `google-play-publisher doctor --package <applicationId>` must pass all checks.
 
-## 4. Передача JSON-ключа приложению
+## 4. Passing the JSON key to the application
 
-Инструмент не создаёт, не хранит и не ротирует ключи — он лишь получает **путь к JSON-файлу service account**.
-Жизненный цикл ключа (выпуск, хранение, ротация) — вне требований.
+The tool does not create, store or rotate keys — it only receives the **path to the service
+account JSON file**. The key lifecycle (issuing, storage, rotation) is outside the
+requirements.
 
-Способов передачи два:
+There are two ways to pass it:
 
-1. **ADC (по умолчанию).** Переменная `GOOGLE_APPLICATION_CREDENTIALS` содержит путь к файлу:
+1. **ADC (default).** The `GOOGLE_APPLICATION_CREDENTIALS` environment variable contains the
+   path:
 
    ```bash
    export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
-   gplay publish -p com.example.app -f app-release.aab -t internal
+   google-play-publisher publish -p com.example.app -f app-release.aab -t internal
    ```
 
-2. **Явный флаг.** `--credentials /path/to/sa.json`; приоритетнее ADC, удобен для локального запуска.
+2. **Explicit flag.** `--credentials /path/to/sa.json`; it takes precedence over ADC and is
+   convenient for local runs.
 
-Требования к файлу минимальны: это JSON-ключ service account, файл существует и читается процессом.
-Как ключ попал на машину (секрет CI, том, локальный каталог) — ответственность пайплайна, не инструмента.
+The file requirements are minimal: it is a service account JSON key, the file exists and is
+readable by the process. How the key got to the machine (CI secret, volume, local directory)
+is the pipeline's responsibility, not the tool's.
 
-Проверка: `gplay doctor --package <applicationId>` — обмен токена должен пройти.
+Check: `google-play-publisher doctor --package <applicationId>` — the token exchange must
+succeed.
 
-## 5. Подпись AAB
+## 5. AAB signing
 
-Play принимает только подписанный bundle. Подпись выполняется до вызова инструмента.
+Play accepts only a signed bundle. Signing happens before the tool is called.
 
-### Gradle (основной путь)
+### Gradle (the main path)
 
 ```kotlin
 android {
@@ -89,7 +97,7 @@ android {
 jarsigner -verify -verbose -certs app/build/outputs/bundle/release/app-release.aab
 ```
 
-### bundletool (если AAB собирается вручную)
+### bundletool (when the AAB is built manually)
 
 ```bash
 java -jar bundletool.jar build-bundle --modules=base.zip --output=app.aab
@@ -98,54 +106,60 @@ jarsigner -keystore upload.jks -sigalg SHA256withRSA -digestalg SHA-256 app.aab 
 
 ### Play App Signing
 
-- Загружаемый AAB подписывается **upload key**; Google пересобирает APK и подписывает их **app signing key**.
-- Для новых приложений Play App Signing обязателен; ключ хранится у Google.
-- При потере upload key запрашивается его сброс в Play Console — это не потеря приложения.
-- Признак корректной настройки: `jarsigner -verify` на локальном AAB проходит, а Play не возвращает ошибок
-  подписи при загрузке.
+- The uploaded AAB is signed with the **upload key**; Google rebuilds APKs and signs them with
+  the **app signing key**.
+- Play App Signing is mandatory for new apps; the key is stored by Google.
+- If the upload key is lost, request a reset in Play Console — the app is not lost.
+- Sign of correct setup: `jarsigner -verify` passes on the local AAB and Play returns no
+  signature errors during upload.
 
 ## 6. Managed publishing
 
-**Что это.** Настройка Play Console (Publishing overview), которая разделяет два события: «изменения одобрены
-ревью» и «изменения опубликованы». Обычно после одобрения Play публикует изменения сам. При включённом
-managed publishing одобренные изменения остаются в разделе «Changes ready to publish», пока человек не нажмёт
-**Publish changes**. Зачем включают: привязать публикацию к дате или рекламной кампании, проверить полный
-список изменений и выпустить всё одним действием.
+**What it is.** A Play Console setting (Publishing overview) that separates "changes approved
+by review" from "changes published". Normally Play publishes approved changes itself. With
+managed publishing enabled, approved changes stay in "Changes ready to publish" until a human
+clicks **Publish changes**. It is used to tie a release to a date or campaign, review the full
+change list and release everything with one action.
 
-**Для `internal` это не применяется.** Play Console Help прямо указывает: «Internal test tracks are not covered
-by Managed publishing» — изменения во внутреннем треке обычно становятся доступны сразу, без ревью. Поэтому
-для нашего сценария (всегда `internal`) managed publishing не блокер, и его состояние можно не проверять.
+**It does not apply to `internal`.** Play Console Help states: "Internal test tracks are not
+covered by Managed publishing" — changes on the internal track usually become available
+immediately, without review. For our scenario (always `internal`) managed publishing is not a
+blocker and its state does not need to be checked.
 
-Два исключения, когда ревью всё же потребуется:
+Two exceptions still require review:
 
-- первый роллаут приложения выполняется в `internal`;
-- предыдущая отправка была отклонена — следующая не станет доступна до одобрения.
+- the app's first rollout runs on `internal`;
+- the previous submission was rejected — the next one is not available until approval.
 
-**Если позже появятся `beta`/`production`.** Managed publishing удерживает роллауты релизов: после одобрения
-понадобится ручной «Publish changes», а API этого не умеет. Проверить режим: Play Console → **Publishing
-overview** → «Managed publishing status». Через API флаг не читается, поэтому инструмент возвращает
-`"managedPublishing": "unknown"` и не делает вид, что публикация завершена.
+**If `beta`/`production` are added later.** Managed publishing holds releases: after approval a
+manual "Publish changes" is needed, and the API cannot do it. Check the mode in Play Console →
+**Publishing overview** → "Managed publishing status". The API does not expose the flag, so the
+tool reports `"managedPublishing": "unknown"` and does not pretend the publication is complete.
 
-## 7. Чек-лист ввода в эксплуатацию
+## 7. Production checklist
 
-- [ ] API `androidpublisher.googleapis.com` включён в проекте.
-- [ ] Ключ передан инструменту: путь в `GOOGLE_APPLICATION_CREDENTIALS` или флаг `--credentials`.
-- [ ] Service account приглашён в Play Console с правами только на релизы («Release to testing tracks»).
-- [ ] `gplay doctor --package <id>` — зелёный.
-- [ ] AAB подписан, `jarsigner -verify` — успех.
-- [ ] Тестовая публикация в `internal` прошла, versionCode виден в `gplay status`.
-- [ ] В CI настроена concurrency-группа (один запуск на приложение).
-- [ ] Managed publishing не влияет на `internal`; если планируются другие треки — режим проверен.
+- [ ] `androidpublisher.googleapis.com` is enabled in the project.
+- [ ] The key is passed to the tool: path in `GOOGLE_APPLICATION_CREDENTIALS` or
+      `--credentials`.
+- [ ] The service account is invited to Play Console with release-only permissions
+      ("Release to testing tracks").
+- [ ] `google-play-publisher doctor --package <id>` is green.
+- [ ] The AAB is signed; `jarsigner -verify` succeeds.
+- [ ] A test publication to `internal` passed and the version code is visible in
+      `google-play-publisher status`.
+- [ ] The CI pipeline has a concurrency group (one run per app).
+- [ ] Managed publishing does not affect `internal`; if other tracks are planned, the mode has
+      been checked.
 
-## 8. Типичные ошибки настройки
+## 8. Common setup errors
 
-| Симптом | Причина | Решение |
+| Symptom | Cause | Fix |
 | --- | --- | --- |
-| `401 invalid_grant` / файл не найден | Неверный путь к JSON-ключу или файл не читается | Передать корректный путь в `GOOGLE_APPLICATION_CREDENTIALS` или `--credentials` |
-| `403 The caller does not have permission` | Service account не приглашён или нет прав на приложение | Invite + App permissions |
-| `404 Application not found` | Неверный `applicationId` или нет доступа к приложению | Сверить package, проверить доступ |
-| `403 API has not been used in project ...` | API не включён | Enable API |
-| `400 ... cannot be sent for review automatically` | Приложение требует ручной отправки | Флаг `--changes-not-sent-for-review`, затем отправка из консоли |
-| Релиз «прошёл», но тестеры не получили | Managed publishing (только closed/open/production) | Публикация вручную; для `internal` не актуально |
-| `403 Daily edit creation quota exceeded` | Исчерпана суточная квота edits | Ждать сутки; убрать циклы «создал-удалил» |
-| Ошибка подписи | AAB подписан не тем ключом / не подписан | Пересобрать с upload key |
+| `401 invalid_grant` / file not found | Wrong JSON key path or unreadable file | Pass the correct path in `GOOGLE_APPLICATION_CREDENTIALS` or `--credentials` |
+| `403 The caller does not have permission` | Service account not invited or no app permissions | Invite + App permissions |
+| `404 Application not found` | Wrong `applicationId` or no access to the app | Check the package and access |
+| `403 API has not been used in project ...` | API not enabled | Enable the API |
+| `400 ... cannot be sent for review automatically` | The app requires manual submission | Use `--changes-not-sent-for-review`, then submit from the console |
+| Release "succeeded" but testers got nothing | Managed publishing (closed/open/production only) | Publish manually; irrelevant for `internal` |
+| `403 Daily edit creation quota exceeded` | Daily edit quota exhausted | Wait until the next day; remove create/delete loops |
+| Signature error | AAB signed with the wrong key / not signed | Rebuild with the upload key |

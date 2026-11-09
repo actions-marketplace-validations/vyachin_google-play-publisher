@@ -1,25 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- Renamed the executable to `google-play-publisher`.
+- Translated all documentation to English and added `AGENTS.md` with project rules.
+
 ## v0.1.0 — 2026-11-09
 
-Первый релиз: публикация подписанного AAB во внутренний трек Google Play.
+First release: publishing signed AABs to the Google Play internal track.
 
-### Команды
+### Commands
 
-- `gplay publish` — preflight, загрузка AAB, релиз в `internal`, коммит edit, `--dry-run`,
+- `publish` — preflight, AAB upload, release on `internal`, edit commit, `--dry-run`,
   `--json`, release notes, `--if-exists`.
-- `gplay doctor` — доступ к API, трек, AAB, JAR-подпись, метаданные AGP.
-- `gplay status` — релизы трека (read-only).
-- `gplay completion` — bash/zsh/fish/powershell.
+- `doctor` — API access, track, AAB, JAR signature, AGP metadata.
+- `status` — releases on a track (read-only).
+- `completion` — bash/zsh/fish/powershell.
 
-### Качество
+### Quality
 
-- 83 % покрытия, тесты на fake Play API, `-race`, `golangci-lint`, `govulncheck`.
-- Debug-режим с редактированием секретов.
-- Релизные сборки goreleaser: linux/darwin/windows, amd64/arm64, checksums.
+- 83% coverage, tests against a fake Play API, `-race`, `golangci-lint`, `govulncheck`.
+- Debug mode with secret redaction.
+- GoReleaser builds: linux/darwin/windows, amd64/arm64, checksums.
 
-### Ограничения
+### Limitations
 
-- Первая публикация приложения — вручную в Play Console.
-- Managed publishing не влияет на `internal`.
-- AAB должен быть подписан; инструмент не подписывает артефакты.
+- The first app publication is done manually in Play Console.
+- Managed publishing does not affect `internal`.
+- The AAB must be signed; the tool does not sign artifacts.

@@ -1,75 +1,77 @@
-# ADR-0002 — Stateless-модель, один edit на запуск, идемпотентность по versionCode
+# ADR-0002 — Stateless model, one edit per run, idempotency by versionCode
 
-- **Статус:** предложено (проектирование)
-- **Дата:** 2026-11-09
-- **Контекст:** инструмент публикации в CI; возможны обрывы сети, таймауты и повторные запуски.
+- **Status:** proposed (design)
+- **Date:** 2026-11-09
+- **Context:** the tool publishes from CI; network drops, timeouts and reruns are possible.
 
-## Контекст
+## Context
 
-Публикация состоит из нескольких сетевых шагов, а Play не предоставляет «транзакций, которые можно продолжить
-после перезапуска процесса». При этом:
+Publishing consists of several network steps, and Play does not provide "transactions that can
+be resumed after a process restart". At the same time:
 
-- один пользователь может иметь только один активный edit на приложение;
-- любой новый edit инвалидирует предыдущий edit того же пользователя;
-- изменения из Play Console инвалидируют активные edits;
-- `commit` отправляет изменения на ревью, и отменить это можно только новым коммитом;
-- versionCode уникален и не переиспользуется для новых релизов.
+- one user can have only one active edit per app;
+- any new edit invalidates the previous edit of the same user;
+- changes in Play Console invalidate active edits;
+- `commit` submits changes for review, and it can only be undone by a new commit;
+- `versionCode` is unique and is not reused for new releases.
 
-Нужно решить, хранить ли локальное состояние (журнал, «незавершённые» публикации, resume), и как обеспечить
-идемпотентность повторных запусков.
+We need to decide whether to keep local state (a journal, "unfinished" publications, resume)
+and how to make reruns idempotent.
 
-## Рассмотренные варианты
+## Considered options
 
-1. **Stateless, один edit на запуск, идемпотентность по versionCode.** Никакого локального состояния; каждый
-   запуск создаёт новый edit, загружает AAB, объявляет релиз и коммитит. Повтор после успеха распознаётся по
-   наличию versionCode в треке.
-2. **Локальный журнал транзакций** (sqlite/JSON): сохранять `editId`, стадию, SHA256 и продолжать с места
-   сбоя. Даёт «resume», но добавляет состояние, миграции, блокировки и расхождение с реальностью Play.
-3. **Идемпотентный ключ на стороне Play** (например, `requestId`). У API такого механизма нет.
+1. **Stateless, one edit per run, idempotency by versionCode.** No local state; each run creates
+   a new edit, uploads the AAB, declares the release and commits. A rerun after success is
+   detected by the version code already present on the track.
+2. **A local transaction journal** (sqlite/JSON): store `editId`, stage, SHA256 and resume from
+   the failure point. Gives "resume", but adds state, migrations, locking and divergence from
+   Play reality.
+3. **An idempotency key on the Play side** (for example `requestId`). The API has no such
+   mechanism.
 
-## Решение
+## Decision
 
-Вариант 1.
+Option 1.
 
-Правила:
+Rules:
 
-- каждый запуск = новый edit; `editId` живёт только в памяти процесса;
-- порядок шагов фиксирован: `insert → upload → tracks.update → commit`;
-- при ошибке до `commit` — best-effort `edits.delete` (не маскирует исходную ошибку);
-- повторный запуск с тем же versionCode:
-  - `--if-exists=fail` (по умолчанию) — код 5 с инструкцией поднять versionCode;
-  - `--if-exists=skip` — успех (идемпотентный no-op), если versionCode уже в целевом треке;
-- после неоднозначной ошибки `commit` — проверка фактического состояния через read-only список релизов,
-  и только потом повтор (см. [05-errors.md](../05-errors.md#4-неоднозначный-коммит));
-- параллельные запуски запрещены на уровне пайплайна (concurrency-группа), а не внутри инструмента.
+- each run = a new edit; `editId` lives only in process memory;
+- the step order is fixed: `insert → upload → tracks.update → commit`;
+- on an error before `commit` — best-effort `edits.delete` (does not mask the original error);
+- a rerun with the same version code:
+  - `--if-exists=fail` (default) — code 5 with an instruction to bump the version code;
+  - `--if-exists=skip` — success (idempotent no-op) if the version code is already on the
+    target track;
+- after an ambiguous `commit` error — check the actual state through the read-only release
+  list, and only then retry (see [05-errors.md](../05-errors.md#4-ambiguous-commit));
+- parallel runs are forbidden at the pipeline level (concurrency group), not inside the tool.
 
-## Последствия
+## Consequences
 
-**Плюсы**
+**Pros**
 
-- нет состояния, которое может «протухнуть» или разойтись с Play;
-- инструмент можно запускать из любого раннера, он не привязан к машине;
-- поведение при сбоях предсказуемо и объяснимо;
-- меньше кода и меньше поверхность ошибок.
+- no state that can go stale or diverge from Play;
+- the tool runs on any runner and is not tied to a machine;
+- failure behavior is predictable and explainable;
+- less code and a smaller error surface.
 
-**Минусы**
+**Cons**
 
-- нет «доката» после падения процесса: повторная публикация того же AAB может потребовать нового versionCode;
-- повторная загрузка большого AAB после сбоя на позднем шаге — расход трафика (частично смягчается
-  resumable-загрузкой в рамках процесса);
-- идемпотентность ограничена: гарантируется «не опубликовать дважды один и тот же релиз», а не «продолжить
-  ровно с того же шага».
+- no "resume" after a process crash: republishing the same AAB may require a new version code;
+- re-uploading a large AAB after a late failure costs traffic (partially mitigated by
+  resumable upload within the process);
+- idempotency is limited: it guarantees "do not publish the same release twice", not "continue
+  exactly from the same step".
 
-**Меры смягчения**
+**Mitigations**
 
-- preflight-проверка versionCode в треке до создания edit;
-- один edit на запуск (экономия суточной квоты);
-- при ошибке `commit` — верификация состояния вместо слепого ретрая;
-- в логах и JSON — `editId`, `versionCode`, `sha256` для ручного разбора.
+- a preflight check of the version code on the track before creating an edit;
+- one edit per run (saves the daily quota);
+- on a `commit` error — verify the state instead of a blind retry;
+- logs and JSON carry `editId`, `versionCode`, `sha256` for manual investigation.
 
-## Когда пересмотреть
+## When to revisit
 
-- появятся сценарии с длинными многошаговыми публикациями (несколько треков, метаданные, продукты) в одном
-  запуске;
-- Play добавит идемпотентные ключи или API продолжения edit;
-- стоимость повторной загрузки станет неприемлемой (очень большие AAB, медленные раннеры).
+- long multi-step publications appear (multiple tracks, metadata, products in one run);
+- Play adds idempotency keys or an edit-continuation API;
+- re-uploading becomes unacceptable (very large AABs, slow runners).

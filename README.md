@@ -1,89 +1,93 @@
-# gplay
+# google-play-publisher
 
-CLI на Go для публикации подписанного Android App Bundle в Google Play.
+A Go CLI that publishes a signed Android App Bundle (AAB) to Google Play.
 
-**Статус:** v0.1.0. Публикация — во внутренний трек `internal`.
+**Status:** v0.1.0. Publishing targets the `internal` track.
 
-## Установка
+## Installation
 
-Из исходников:
+From source:
 
 ```bash
-go install github.com/vyachin/google-play-publisher/cmd/gplay@v0.1.0
+git clone https://github.com/vyachin/google-play-publisher.git
+cd google-play-publisher
+go install ./cmd/google-play-publisher
 ```
 
-Или скачать бинарник из GitHub Releases (linux/darwin/windows, amd64/arm64) и проверить
-`checksums.txt`.
+Prebuilt binaries for linux/darwin/windows (amd64/arm64) are published on GitHub Releases;
+verify them with `checksums.txt`.
 
-## Аутентификация
+## Authentication
 
-Нужен JSON-ключ service account, добавленного в Play Console с правом
-«Release to testing tracks». Путь передаётся одним из способов:
+You need a service account JSON key whose account is added to Play Console with the
+"Release to testing tracks" permission. Pass the key in one of two ways:
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json
-# или
-gplay publish ... --credentials /path/to/sa.json
+# or
+google-play-publisher publish ... --credentials /path/to/sa.json
 ```
 
-Подробная настройка — [docs/04-play-console-setup.md](docs/04-play-console-setup.md).
+Full setup instructions: [docs/04-play-console-setup.md](docs/04-play-console-setup.md).
 
-## Быстрый старт
+## Quick start
 
 ```bash
-# 1. Проверить доступы и артефакт
-gplay doctor -p com.example.app -f app-release.aab --metadata output-metadata.json
+# 1. Check access, track and artifact
+google-play-publisher doctor -p com.example.app -f app-release.aab \
+  --metadata output-metadata.json
 
-# 2. Опубликовать в internal
-gplay publish -p com.example.app -f app-release.aab -t internal
+# 2. Publish to internal
+google-play-publisher publish -p com.example.app -f app-release.aab -t internal
 
-# 3. Посмотреть релизы
-gplay status -p com.example.app -t internal
+# 3. Show releases
+google-play-publisher status -p com.example.app -t internal
 ```
 
-`--json` даёт машиночитаемый результат в stdout, логи идут в stderr:
+`--json` prints a machine-readable result to stdout; logs go to stderr:
 
 ```bash
-gplay --json publish -p com.example.app -f app-release.aab > publish.json
+google-play-publisher --json publish -p com.example.app -f app-release.aab > publish.json
 ```
 
 ## Release notes
 
 ```json
-{"en-US": "Bug fixes", "ru-RU": "Исправления"}
+{"en-US": "Bug fixes", "de-DE": "Fehlerbehebungen"}
 ```
 
 ```bash
-gplay publish -p com.example.app -f app-release.aab --release-notes notes.json
+google-play-publisher publish -p com.example.app -f app-release.aab --release-notes notes.json
 ```
 
-## Полезное
+## Useful options
 
-- `--dry-run` — загрузить AAB и провалидировать edit, не коммитя.
-- `--debug` — детальные логи HTTP, фаз и ретраев (секреты редактируются).
-- `--if-exists=skip` — идемпотентный повтор, если versionCode уже в треке.
-- `gplay completion bash|zsh|fish|powershell` — автодополнение.
+- `--dry-run` — upload the AAB and validate the edit without committing.
+- `--debug` — detailed HTTP, phase and retry logs (secrets are redacted).
+- `--if-exists=skip` — idempotent rerun when the version code is already on the track.
+- `google-play-publisher completion bash|zsh|fish|powershell` — shell completion.
 
-## Ограничения
+## Limitations
 
-- Приложение должно уже существовать в Play Console и иметь хотя бы одну сборку.
-- Первая публикация приложения и юридические декларации — вручную в Play Console.
-- Managed publishing не влияет на `internal`; для других треков публикация может требовать
-  ручного «Publish changes».
-- Инструмент не подписывает AAB.
+- The app must already exist in Play Console and have at least one uploaded build.
+- The first app publication and legal declarations are done manually in Play Console.
+- Managed publishing does not affect `internal`; for other tracks publishing may require
+  a manual "Publish changes".
+- The tool does not sign AABs.
 
-## Документация
+## Documentation
 
-- [Дизайн и ограничения](docs/README.md)
-- [CLI-контракт](docs/03-cli-contract.md)
-- [Настройка Play Console](docs/04-play-console-setup.md)
-- [Ошибки и коды выхода](docs/05-errors.md)
-- [План разработки](TODO.md)
+- [Design and constraints](docs/README.md)
+- [CLI contract](docs/03-cli-contract.md)
+- [Play Console setup](docs/04-play-console-setup.md)
+- [Errors and exit codes](docs/05-errors.md)
+- [Development plan](TODO.md)
+- [Project rules](AGENTS.md)
 
-## Разработка
+## Development
 
 ```bash
-make build      # bin/gplay
+make build      # bin/google-play-publisher
 make test       # go test ./...
 make lint       # golangci-lint
 make fmt        # gofumpt + go mod tidy

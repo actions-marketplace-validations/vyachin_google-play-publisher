@@ -1,46 +1,50 @@
-# 02 — Архитектура
+# 02 — Architecture
 
-## 1. Принципы
+## 1. Principles
 
-1. **Stateless.** Никакой локальной БД, кэша и «незавершённых транзакций». Состояние живёт в Play; локально —
-   только артефакт и параметры запуска.
-2. **Один запуск — один edit.** Это минимизирует расход суточной квоты и площадь конфликтов.
-3. **Fail fast.** Ошибки авторизации, прав, отсутствия приложения и конфликтов состояния не ретраятся.
-4. **Обратимость известна.** До `commit` всё можно удалить; после — только новый релиз или halt.
-5. **Безопасные дефолты.** Не отменять чужое ревью; не публиковать в production без явного флага; не удалять
-   историю трека.
-6. **Машиночитаемость.** Каждый результат имеет код выхода и JSON-представление для CI.
+1. **Stateless.** No local database, cache or "unfinished transactions". State lives in Play;
+   locally we only have the artifact and the run parameters.
+2. **One run — one edit.** This minimizes daily quota usage and the conflict surface.
+3. **Fail fast.** Authentication, permission, missing-app and state-conflict errors are not
+   retried.
+4. **Known reversibility.** Everything can be deleted before `commit`; afterwards only a new
+   release or a halt is possible.
+5. **Safe defaults.** Do not cancel someone else's review; do not publish to production
+   without an explicit flag; do not drop track history.
+6. **Machine-readable.** Every result has an exit code and a JSON representation for CI.
 
-## 2. Структура пакетов
+## 2. Package layout
 
 ```
-cmd/gplay/                 main: сборка App, вызов cli.ExecuteContext, os.Exit(code)
-internal/cli/              cobra: root + команды (тонкий слой, по файлу на команду)
-  root.go                  PersistentFlags, группы, Execute
-  publish.go               флаги → app.Publish
-  doctor.go                флаги → app.Doctor
-  status.go                флаги → app.Status
-internal/app/              use-case'ы без cobra и без androidpublisher
-internal/play/             тонкая обёртка над androidpublisher: интерфейс + реализация + маппинг ошибок
-internal/artifact/         инспекция артефакта: ZIP-сигнатура, output-metadata.json, sha256
-internal/release/          домен: ReleasePlan, валидация статуса/дроби/notes, имена треков
-internal/retry/            backoff-политика и классификация ошибок
-internal/logging/          slog, debugTransport, редактирование секретов
-internal/exitcode/         типы ошибок → коды выхода
-internal/version/          версия, commit, дата сборки
+cmd/google-play-publisher/   main: build App, call cli.Execute, os.Exit(code)
+internal/cli/                cobra: root + commands (thin layer, one file per command)
+  root.go                    PersistentFlags, groups, Execute
+  publish.go                 flags → app.Publish
+  doctor.go                  flags → app.Doctor
+  status.go                  flags → app.Status
+internal/app/                use cases without cobra and without androidpublisher
+internal/play/               thin wrapper over androidpublisher: interface + client + error mapping
+internal/artifact/           artifact inspection: ZIP signature, output-metadata.json, sha256
+internal/release/            domain: Plan, status/rollout/notes validation, track names
+internal/retry/              (reserved) backoff policy and error classification
+internal/logging/            slog, debug transport, secret redaction
+internal/exitcode/           typed errors → process exit codes
+internal/version/            version, commit, build date
 ```
 
-Почему так:
+Why this shape:
 
-- `cli` не знает про `androidpublisher` — только про use-case'ы `app` и интерфейс `play.API`;
-- `app` не знает про `cobra` — оркестрация шагов публикации, легко тестируется;
-- `release` не знает про HTTP — чистая валидация, легко тестируется таблицами;
-- `play` — единственное место, где живут типы Google-клиента, чтобы обновление клиента не расползалось по коду.
+- `cli` does not know about `androidpublisher` — only use cases from `app` and the `play.API`
+  interface;
+- `app` does not know about `cobra` — it orchestrates publish steps and is easy to test;
+- `release` has no HTTP — pure validation, easily covered by table tests;
+- `play` is the only place with Google client types, so client upgrades do not leak across the
+  codebase.
 
-Стек и соглашения по cobra — в [06-stack.md](06-stack.md), решение — в
+The stack and cobra conventions are in [06-stack.md](06-stack.md); the decision is recorded in
 [ADR-0003](adr/0003-cobra-command-layout.md).
 
-## 3. Границы и интерфейс
+## 3. Boundaries and interface
 
 ```go
 // internal/play
@@ -55,25 +59,26 @@ type API interface {
 }
 ```
 
-`CommitOptions{ChangesNotSentForReview bool, InReviewBehavior InReviewBehavior}`.
-`BundleInfo{VersionCode int64, SHA256, SHA1 string}` — ровно то, что нужно для лога и JSON.
+`CommitOptions{ChangesNotSentForReview bool, InReviewBehavior string}`.
+`BundleInfo{VersionCode int64, SHA256, SHA1 string}` — exactly what logs and JSON need.
 
-Реализация — `play.Client` с `*androidpublisher.Service`: сервис создаётся с `option.WithHTTPClient`
-(oauth2-клиент из ADC или `--credentials`) и `option.WithEndpoint` для тестов; User-Agent ставится в transport,
-таймаут задаётся контекстом операции.
+The implementation is `play.Client` holding an `*androidpublisher.Service`: the service is
+created with `option.WithHTTPClient` (an oauth2 client built from ADC or `--credentials`) and
+`option.WithEndpoint` for tests; the User-Agent is set in the transport, and the timeout is
+defined by the operation context.
 
-## 4. Поток `publish`
+## 4. The `publish` flow
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CLI as gplay publish
-    participant AAB as internal/aab
+    participant CLI as google-play-publisher publish
+    participant AAB as internal/artifact
     participant API as Play API
 
-    CLI->>AAB: проверить файл, sha256, (опц.) output-metadata.json
+    CLI->>AAB: inspect file, sha256, optional output-metadata.json
     CLI->>API: applications.tracks.releases.list (preflight)
-    API-->>CLI: текущие релизы трека
+    API-->>CLI: current track releases
     CLI->>API: edits.insert(package)
     API-->>CLI: editId
     CLI->>API: edits.bundles.upload(editId, aab) [resumable]
@@ -82,137 +87,154 @@ sequenceDiagram
     alt dry-run
         CLI->>API: edits.validate(editId)
         CLI->>API: edits.delete(editId)
-    else обычный запуск
+    else normal run
         CLI->>API: edits.commit(editId, behavior)
         API-->>CLI: AppEdit
     end
-    CLI-->>CLI: человекочитаемый вывод или JSON
+    CLI-->>CLI: human output or JSON
 ```
 
-### Preflight (до создания edit)
+### Preflight (before creating an edit)
 
-- файл существует, читается, не пуст, является ZIP и содержит `BundleConfig.pb` (признак AAB, а не APK);
-- если передан `--metadata output-metadata.json` — `applicationId` совпадает с `--package`, а `versionCode`
-  известен заранее (в API его передавать не нужно: Play вернёт его после загрузки; значение нужно для логов
-  и preflight-сверки);
-- `--package` синтаксически валиден (сегменты через точку);
-- трек существует в списке треков (или разрешено создание кастомного closed-трека — вне MVP);
-- если `versionCode` известен и уже присутствует в целевом треке → поведение по `--if-exists` (`fail` по умолчанию);
-- статус/дробь согласованы: `inProgress` требует `0 < rollout < 1`, `completed` — без дроби.
+- the file exists, is readable, is non-empty, is a ZIP and contains `BundleConfig.pb`
+  (the marker of an AAB, not an APK);
+- when `--metadata output-metadata.json` is passed: `applicationId` matches `--package`, and
+  `versionCode` is known in advance (it is not sent to the API — Play returns it after the
+  upload; the value is used for logs and a preflight comparison);
+- `--package` is syntactically valid (dot-separated segments);
+- the track exists in the track list (custom closed-track creation is outside the MVP);
+- if `versionCode` is known and already present on the target track, apply `--if-exists`
+  (`fail` by default);
+- status and fraction are consistent: `inProgress` requires `0 < rollout < 1`, `completed`
+  takes no fraction.
 
-Preflight намеренно дешёвый и не создаёт edit: суточная квота на создание edits расходуется только когда
-всё остальное проверено.
+Preflight is deliberately cheap and does not create an edit: the daily edit quota is spent
+only after everything else has been checked.
 
-### Загрузка
+### Upload
 
-- `Media` с `googleapi.ChunkSize(8 MiB)` и `googleapi.ChunkRetryDeadline(30 s)`: файлы меньше чанка клиент
-  отправляет multipart-запросом, большие — resumable-чанками;
-- прогресс — `ProgressUpdater`, `INFO` каждые 5 % (в debug — подробнее), чтобы CI не выглядел зависшим;
-- после ответа — сверить `sha256` с локальным и залогировать `versionCode`.
+- `Media` with `googleapi.ChunkSize(8 MiB)` and `googleapi.ChunkRetryDeadline(30 s)`: files
+  smaller than one chunk are sent as a multipart request, larger ones as resumable chunks;
+- progress goes through `ProgressUpdater`, `INFO` every 5% (more detail in debug), so CI does
+  not look stuck;
+- after the response, compare `sha256` with the local value and log `versionCode`.
 
-### Обновление трека
+### Track update
 
-MVP отправляет **один релиз** в `tracks.update` (как в примере Google). Это декларативная замена ресурса:
-инструмент не пытается «дописать» релиз к истории. Если интеграционный тест покажет, что нужен merge
-(сохранение предыдущих `completed`-релизов), добавляется режим `tracks.get → merge → update` без изменения CLI.
+The MVP sends **one release** in `tracks.update` (as in the Google example). This is a
+declarative replacement of the resource: the tool does not append to history. If an
+integration test shows that a merge is needed (preserving previous `completed` releases), a
+`tracks.get → merge → update` mode can be added without changing the CLI.
 
-### Коммит
+### Commit
 
-- `InReviewBehavior`: по умолчанию `ERROR_IF_IN_REVIEW`; `CANCEL_IN_REVIEW_AND_SUBMIT` — только явным
-  `--on-in-review=replace`.
-- `ChangesNotSentForReview`: по умолчанию `false`; при отказе Play «нельзя отправить автоматически» —
-  ровно одна повторная попытка с `true` и код выхода «требуется ручное действие».
+- `InReviewBehavior`: `ERROR_IF_IN_REVIEW` by default; `CANCEL_IN_REVIEW_AND_SUBMIT` only with
+  an explicit `--on-in-review=replace`;
+- `ChangesNotSentForReview`: `false` by default; when Play refuses automatic submission, the
+  tool retries exactly once with `true` and exits with the "manual action required" code.
 
-## 5. Политика ревью
+## 5. Review policy
 
-| Ситуация | Поведение |
+| Situation | Behavior |
 | --- | --- |
-| На ревью ничего нет | Обычный коммит, изменения уходят на ревью |
-| Что-то на ревью, `--on-in-review=error` (дефолт) | Ошибка до отправки, код 5, понятное сообщение; чужое ревью не отменяется |
-| Что-то на ревью, `--on-in-review=replace` | Коммит с `CANCEL_IN_REVIEW_AND_SUBMIT`; в лог — предупреждение, что предыдущее ревью отменено |
-| Play требует ручной отправки | Повтор с `changesNotSentForReview=true`, код 8, инструкция «отправить из консоли» |
-| Managed publishing | Только для closed/open/production: коммит успешен, но публикация ждёт ручного шага; для `internal` не наступает |
+| Nothing in review | Normal commit; changes are submitted for review |
+| Something in review, `--on-in-review=error` (default) | Error before submission, code 5, clear message; the other review is not cancelled |
+| Something in review, `--on-in-review=replace` | Commit with `CANCEL_IN_REVIEW_AND_SUBMIT`; the log warns that the previous review was cancelled |
+| Play requires manual submission | Retry with `changesNotSentForReview=true`, code 8, instruction to submit from the console |
+| Managed publishing | Only for closed/open/production: the commit succeeds but publication waits for a manual step; `internal` is unaffected |
 
-Для `internal` ревью обычно нет: сборка становится доступна сразу. Исключения — первый роллаут приложения и
-ситуация, когда предыдущая отправка была отклонена; тогда `commit` уходит на ревью, и это нормальный сценарий,
-а не ошибка инструмента.
+For `internal` there is usually no review: the build becomes available immediately. The
+exceptions are the app's first rollout and a previously rejected submission; then `commit`
+goes to review, which is a normal scenario, not a tool error.
 
-## 6. Идемпотентность и восстановление
+## 6. Idempotency and recovery
 
-Естественный ключ публикации — `versionCode`. Он уникален в рамках приложения и не может быть переиспользован
-для нового релиза.
+The natural key of a publication is `versionCode`. It is unique within the app and cannot be
+reused for a new release.
 
-| Сбой | Состояние | Действие |
+| Failure | State | Action |
 | --- | --- | --- |
-| Ошибка до `edits.insert` | Ничего не создано | Выход с кодом причины, без ретраев |
-| Ошибка `bundles.upload` (сеть/5xx) | Edit активен | Ретрай чанков; при смерти сессии — повторная загрузка в тот же edit |
-| Ошибка `tracks.update` (валидация) | Edit активен, AAB загружен | Не ретраить; удалить edit (best effort), код 7, сообщение Play |
-| Ошибка `commit` (валидация) | Edit активен | Удалить edit, код 7; правки — в параметрах запуска/сборке |
-| Таймаут/5xx на `commit` (неоднозначно) | Неизвестно | Проверить `applications.tracks.releases.list`: если `versionCode` в треке — успех; иначе повторить commit (edit ещё жив) |
-| `edit not found` / `edit invalid` на commit | Edit инвалидирован | Проверить трек; если версии нет — код 5 с инструкцией перезапустить с новым versionCode |
-| `versionCode` уже в треке | Релиз уже есть | `--if-exists=skip` → успех (идемпотентный повтор); иначе код 5 |
-| SIGINT/SIGTERM | Edit активен | Отменить контекст, best-effort `edits.delete` в отдельном коротком контексте, код 130 |
+| Error before `edits.insert` | Nothing created | Exit with the cause code, no retries |
+| `bundles.upload` error (network/5xx) | Edit active | Retry chunks; if the session dies, upload again into the same edit |
+| `tracks.update` error (validation) | Edit active, AAB uploaded | Do not retry; delete the edit (best effort), code 7, Play message |
+| `commit` error (validation) | Edit active | Delete the edit, code 7; fix the flags or the build |
+| Timeout/5xx on `commit` (ambiguous) | Unknown | Check `applications.tracks.releases.list`: if `versionCode` is on the track, it succeeded; otherwise retry the commit (the edit may still be alive) |
+| `edit not found` / `edit invalid` on commit | Edit invalidated | Check the track; if the version is absent, code 5 with a rerun instruction using a new version code |
+| `versionCode` already on the track | Already released | `--if-exists=skip` → success (idempotent rerun); otherwise code 5 |
+| SIGINT/SIGTERM | Edit active | Cancel the context, best-effort `edits.delete` in a short separate context, code 130 |
 
-Повторная публикация того же AAB после **успешного** commit не выполняется: это отдельный релиз с тем же
-versionCode, который Play отклонит. Если `versionCode` известен из метаданных, инструмент распознаёт это до
-загрузки; если нет — по ответу Play и коду выхода 5.
+Republishing the same AAB after a **successful** commit is not attempted: it is a separate
+release with the same version code, which Play rejects. If `versionCode` is known from
+metadata the tool detects this before uploading; otherwise Play rejects it and the tool exits
+with code 5.
 
-## 7. Таймауты и отмена
+## 7. Timeouts and cancellation
 
-| Параметр | Значение по умолчанию | Комментарий |
+| Parameter | Default | Notes |
 | --- | --- | --- |
-| Общий дедлайн | 20 min | `--timeout`; покрывает загрузку и коммит |
-| HTTP-таймаут запроса | 5 min | Для `bundles.upload` — не меньше 2 min (рекомендация Google) |
-| Ретраи | до 5 попыток, экспоненциально | Только 5xx/429/сетевые; см. [05](05-errors.md) |
-| Дедлайн ретрая чанка | 30 s | `ChunkRetryDeadline` |
+| Overall deadline | 20 min | `--timeout`; covers upload and commit |
+| HTTP request timeout | 5 min | For `bundles.upload` at least 2 min (Google's recommendation) |
+| Retries | up to 5 attempts, exponential | Only 5xx/429/network; see [05](05-errors.md) |
+| Chunk retry deadline | 30 s | `ChunkRetryDeadline` |
 
-Отмена по сигналу: `signal.NotifyContext`, отдельный `context.WithTimeout(..., 15*time.Second)` для очистки,
-чтобы не «повиснуть» на удалении edit.
+Cancellation on a signal: `signal.NotifyContext`, plus a separate
+`context.WithTimeout(..., 15*time.Second)` for cleanup so the process does not hang on edit
+deletion.
 
-## 8. Логирование и debug-режим
+## 8. Logging and debug mode
 
-- `log/slog`; уровень `INFO` по умолчанию, `--debug` (или `GPLAY_DEBUG=1`) переключает на `DEBUG`.
-- Всё пишется в `stderr`; `stdout` — только результат. При `--json` в `stdout` ровно один объект.
-- Формат: `text` для человека, `json` для CI (`--log-format=json`); цвет только при TTY и без `NO_COLOR`.
-- Обязательные поля: `time`, `level`, `phase` (`preflight|insert|upload|track|commit|cleanup`), `package`,
-  `track`, `version_code`, `edit_id`, `duration_ms`, `attempt`.
-- Debug добавляет: HTTP-обмен (метод, URL, статус, длительность, размер, попытка), тела запросов/ответов
-  до 4 KiB, correlation id из заголовков ответа, решения о ретраях и backoff, источник каждого параметра
-  (флаг/env/дефолт), стектрейсы для `INTERNAL`.
-- Реализация: обёртка `http.RoundTripper` (`debugTransport`). Для обычных JSON-запросов тело буферизуется и
-  восстанавливается; для `bundles.upload` тело не читается — логируются только заголовки
-  (`Content-Range`, `Content-Length`) и прогресс, чтобы не ломать resumable-загрузку и не удваивать память.
-- Прогресс загрузки: `INFO` раз в 5%, `DEBUG` раз в секунду (байты, процент, текущий чанк).
-- Редактирование: никогда не логируются `Authorization`, OAuth-токены, `private_key` и содержимое ключа,
-  байты AAB; путь к ключу логировать допустимо. Тела ошибок обрезаются, бинарные тела не дампятся.
-- Debug не меняет поведение, таймауты и ретраи; накладные расходы — только на логирование.
-- Тест: golden-тест debug-лога, проверяющий отсутствие `private_key`, `Authorization` и значений токенов.
-- Итоговый JSON (`--json`) — стабильная схема, см. [03-cli-contract.md](03-cli-contract.md#7-debug-режим).
+- `log/slog`; `INFO` by default, `--debug` switches to `DEBUG`.
+- Everything is written to `stderr`; `stdout` carries only the result. With `--json`, `stdout`
+  contains exactly one object.
+- Formats: `text` for humans, `json` for CI (`--log-format=json`); color only on a TTY and
+  without `NO_COLOR`.
+- Required fields: `time`, `level`, `phase` (`preflight|insert|upload|track|commit|cleanup`),
+  `package`, `track`, `version_code`, `edit_id`, `duration_ms`, `attempt`.
+- Debug adds: HTTP exchanges (method, URL, status, duration, size, attempt), request/response
+  bodies up to 4 KiB, correlation id from response headers, retry/backoff decisions, the source
+  of every parameter (flag/env/default), and stack traces for `INTERNAL`.
+- Implementation: a `http.RoundTripper` wrapper (`debugTransport`). For regular JSON requests
+  the body is buffered and restored; for `bundles.upload` the body is not read — only headers
+  (`Content-Range`, `Content-Length`) and progress are logged, so resumable uploads are not
+  broken and memory is not doubled.
+- Upload progress: `INFO` every 5%, `DEBUG` every second (bytes, percent, current chunk).
+- Redaction: `Authorization`, OAuth tokens, `private_key` and key contents, and AAB bytes are
+  never logged; the key path is allowed. Error bodies are truncated, binary bodies are never
+  dumped.
+- Debug does not change behavior, timeouts or retries; the only cost is logging overhead.
+- Test: a debug-log golden test asserts that `private_key`, `Authorization` and token values
+  never appear.
+- The final JSON (`--json`) has a stable schema, see
+  [03-cli-contract.md](03-cli-contract.md#7-debug-mode).
 
-## 9. Безопасность
+## 9. Security
 
-- Аутентификация — ADC. Инструмент получает только путь к JSON-ключу service account: через
-  `GOOGLE_APPLICATION_CREDENTIALS` или флаг `--credentials`; всё остальное о ключе он не знает.
-- Least privilege: service account — отдельный, только на нужные приложения, только права на релизы
-  (см. [04](04-play-console-setup.md)); не Owner и не Admin аккаунта.
-- Инструмент не печатает и не сохраняет AAB; работает с файлом только на чтение.
-- В логах фиксируется `editId` и `versionCode` — этого достаточно для аудита вместе с Play Console.
+- Authentication is ADC. The tool only receives the path to the service account JSON key via
+  `GOOGLE_APPLICATION_CREDENTIALS` or `--credentials`; it knows nothing else about the key.
+- Least privilege: a dedicated service account, only the required apps, only release
+  permissions (see [04](04-play-console-setup.md)); never Owner or account Admin.
+- The tool never prints or stores the AAB; it opens the file read-only.
+- Logs record `editId` and `versionCode` — enough for an audit together with Play Console.
 
-## 10. Тестируемость
+## 10. Testability
 
-- **Юнит-тесты домена:** таблицы статусов, дробей, release notes, имён треков, кодов выхода.
-- **Тесты клиента:** `httptest.Server` + `option.WithEndpoint(server.URL)` + подмена token source; проверяем
-  последовательность вызовов, retry-политику, маппинг `googleapi.Error` в коды выхода.
-- **Golden-тесты ошибок:** фикстуры реальных ответов Play (400/403/404/409) → ожидаемое сообщение и код.
-- **Интеграционные тесты:** отдельное тестовое приложение и внутренний трек, гейт по переменным окружения
-  (`GPLAY_INTEGRATION=1`), уникальный versionCode на прогон, очистка edit в `t.Cleanup`.
-- **Контрактный тест:** раз в релиз — прогон на реальном приложении; ловит изменения API и клиента.
+- **Domain unit tests:** tables for statuses, fractions, release notes, track names, exit
+  codes.
+- **Client tests:** `httptest.Server` + `option.WithEndpoint` + a fake token source; we assert
+  the call sequence, retry policy and the mapping of `googleapi.Error` to exit codes.
+- **Error golden tests:** fixtures of real Play responses (400/403/404/409) → expected message
+  and code.
+- **Integration tests:** a dedicated test app and internal track, gated by environment
+  variables (`GOOGLE_PLAY_PUBLISHER_INTEGRATION=1`), a unique version code per run, edit cleanup in
+  `t.Cleanup`.
+- **Contract test:** once per release — run against a real app; catches API and client changes.
 
-## 11. Что осознанно не делается
+## 11. Deliberate non-goals
 
-- параллельные публикации и очередь;
-- локальный журнал транзакций и «докат» после падения процесса;
-- ожидание завершения ревью/публикации (нет API-статуса ревью; публикация занимает часы);
-- управление listing, тестерами, ценами, продуктами;
-- подпись и сборка AAB;
-- создание приложения и первая публикация.
+- parallel publications and a queue;
+- a local transaction journal and "resume after process death";
+- waiting for review/publication completion (there is no review status API; publication takes
+  hours);
+- managing listings, testers, prices, products;
+- signing and building AABs;
+- creating an app and its first publication.
