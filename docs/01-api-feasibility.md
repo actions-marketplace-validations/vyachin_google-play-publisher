@@ -67,7 +67,15 @@ A release (`Release`) on a track has these fields:
 - `status` — `draft` | `inProgress` | `halted` | `completed`;
 - `userFraction` — user share for `inProgress` (0 < f < 1);
 - `releaseNotes[]` — `{language, text}`, at most 500 characters per locale;
-- `name` — human-readable release name.
+- `name` — human-readable release name;
+- `inAppUpdatePriority` — in-app update priority `0..5`; it cannot change once the release is
+  rolled out;
+- `countryTargeting` — `{countries[], includeRestOfWorld}`; Play accepts it only for an
+  `inProgress` release on the `production` track.
+
+`edits.tracks.get` reads the same resource inside an edit. The tool uses it in `rollout` and
+`promote`, which modify or copy an existing release: with a declarative `tracks.update` the
+whole release must be sent back, so the fields above are preserved instead of reset.
 
 Status semantics ([APKs and Tracks](https://developers.google.com/android-publisher/tracks)):
 
@@ -91,6 +99,8 @@ Important details:
 - Halting a `completed` release is only possible when a previous `completed` release exists to
   become the fallback. This is a Play limit, not a client one.
 - A draft lets you upload an AAB and prepare a release, then publish it later from the console.
+- A halted release keeps its `userFraction`; resuming it means sending `inProgress` with the
+  same or a larger fraction, which is exactly what `rollout --fraction` does.
 
 ## 4. Review, submission and managed publishing
 

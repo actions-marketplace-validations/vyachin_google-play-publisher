@@ -18,11 +18,15 @@ type Status string
 const (
 	StatusDraft      Status = "draft"
 	StatusInProgress Status = "inProgress"
+	StatusHalted     Status = "halted"
 	StatusCompleted  Status = "completed"
 )
 
 // MaxNoteLength is the maximum length of release notes per locale.
 const MaxNoteLength = 500
+
+// MaxInAppUpdatePriority is the highest in-app update priority Play accepts.
+const MaxInAppUpdatePriority = 5
 
 // Note is a release note for one locale.
 type Note struct {
@@ -37,6 +41,11 @@ type Plan struct {
 	Status       Status
 	UserFraction float64
 	Notes        []Note
+	// InAppUpdatePriority is the Play in-app update priority; 0 means unset.
+	InAppUpdatePriority int
+	// Countries and IncludeRestOfWorld describe optional country targeting.
+	Countries          []string
+	IncludeRestOfWorld bool
 }
 
 // Input holds raw values collected from CLI flags.
@@ -47,26 +56,26 @@ type Input struct {
 	// Rollout is nil when no staged rollout was requested.
 	Rollout *float64
 	Notes   map[string]string
+	// InAppUpdatePriority is the Play in-app update priority; 0 means unset.
+	InAppUpdatePriority int
+	// Countries and IncludeRestOfWorld request country targeting. Play accepts
+	// them only for an inProgress release on the production track.
+	Countries          []string
+	IncludeRestOfWorld bool
 }
 
 var (
 	packagePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$`)
 	trackPattern   = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9:_-]*$`)
 	localePattern  = regexp.MustCompile(`^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$`)
+	countryPattern = regexp.MustCompile(`^[A-Z]{2}$`)
 )
 
 // NewPlan validates CLI input and builds a release plan.
 func NewPlan(in Input) (Plan, error) {
-	if !packagePattern.MatchString(in.Package) {
-		return Plan{}, exitcode.Errorf(exitcode.Usage, "invalid package name %q", in.Package)
-	}
-
-	track := strings.TrimSpace(in.Track)
-	if track == "" {
-		track = "internal"
-	}
-	if !trackPattern.MatchString(track) {
-		return Plan{}, exitcode.Errorf(exitcode.Usage, "invalid track name %q", track)
+	track, err := ValidateTarget(in.Package, in.Track)
+	if err != nil {
+		return Plan{}, err
 	}
 
 	status, err := resolveStatus(in.Status, in.Rollout)
@@ -79,17 +88,30 @@ func NewPlan(in Input) (Plan, error) {
 		return Plan{}, err
 	}
 
+	priority, err := validatePriority(in.InAppUpdatePriority)
+	if err != nil {
+		return Plan{}, err
+	}
+
+	countries, restOfWorld, err := validateTargeting(track, status, in.Countries, in.IncludeRestOfWorld)
+	if err != nil {
+		return Plan{}, err
+	}
+
 	fraction := 0.0
 	if in.Rollout != nil {
 		fraction = *in.Rollout
 	}
 
 	return Plan{
-		Package:      in.Package,
-		Track:        track,
-		Status:       status,
-		UserFraction: fraction,
-		Notes:        notes,
+		Package:             in.Package,
+		Track:               track,
+		Status:              status,
+		UserFraction:        fraction,
+		Notes:               notes,
+		InAppUpdatePriority: priority,
+		Countries:           countries,
+		IncludeRestOfWorld:  restOfWorld,
 	}, nil
 }
 
@@ -170,4 +192,112 @@ func ParseExistsPolicy(raw string) (ExistsPolicy, error) {
 		return "", exitcode.Errorf(exitcode.Usage,
 			"invalid --if-exists %q: want fail or skip", raw)
 	}
+}
+
+// ValidateTarget checks the package and track names and returns the effective
+// track name (empty defaults to "internal"). Commands that do not publish an
+// AAB, such as rollout and promote, validate their target with it before any
+// API call.
+func ValidateTarget(pkg, track string) (string, error) {
+	if !packagePattern.MatchString(pkg) {
+		return "", exitcode.Errorf(exitcode.Usage, "invalid package name %q", pkg)
+	}
+
+	effective := strings.TrimSpace(track)
+	if effective == "" {
+		effective = "internal"
+	}
+	if !trackPattern.MatchString(effective) {
+		return "", exitcode.Errorf(exitcode.Usage, "invalid track name %q", effective)
+	}
+	return effective, nil
+}
+
+// validatePriority checks the in-app update priority range.
+func validatePriority(priority int) (int, error) {
+	if priority < 0 || priority > MaxInAppUpdatePriority {
+		return 0, exitcode.Errorf(exitcode.Usage,
+			"--in-app-update-priority must be between 0 and %d, got %d",
+			MaxInAppUpdatePriority, priority)
+	}
+	return priority, nil
+}
+
+// validateTargeting normalizes country codes and enforces the Play rule that
+// country targeting is accepted only for an inProgress release on production.
+func validateTargeting(track string, status Status, raw []string, restOfWorld bool) ([]string, bool, error) {
+	countries := make([]string, 0, len(raw))
+	seen := make(map[string]bool, len(raw))
+	for _, item := range raw {
+		code := strings.ToUpper(strings.TrimSpace(item))
+		if !countryPattern.MatchString(code) {
+			return nil, false, exitcode.Errorf(exitcode.Usage,
+				"invalid country code %q: want a two-letter CLDR code, for example DE", item)
+		}
+		if seen[code] {
+			continue
+		}
+		seen[code] = true
+		countries = append(countries, code)
+	}
+	sort.Strings(countries)
+
+	if len(countries) == 0 && !restOfWorld {
+		return nil, false, nil
+	}
+	if len(countries) == 0 {
+		return nil, false, exitcode.Errorf(exitcode.Usage,
+			"--include-rest-of-world requires at least one --country")
+	}
+	if status != StatusInProgress || track != "production" {
+		return nil, false, exitcode.WithHint(
+			exitcode.Errorf(exitcode.Usage,
+				"country targeting is only supported for an inProgress release on the production track"),
+			"combine --country with --track=production --status=inProgress --rollout <fraction>, or drop --country")
+	}
+	return countries, restOfWorld, nil
+}
+
+// RolloutPlan is a validated change to an existing track release.
+type RolloutPlan struct {
+	Status       Status
+	UserFraction float64
+}
+
+// NewRolloutPlan validates a rollout change. Exactly one of a fraction, a halt
+// and a completion must be requested.
+func NewRolloutPlan(fraction *float64, halt, complete bool) (RolloutPlan, error) {
+	selected := 0
+	if fraction != nil {
+		selected++
+	}
+	if halt {
+		selected++
+	}
+	if complete {
+		selected++
+	}
+
+	switch {
+	case selected == 0:
+		return RolloutPlan{}, exitcode.Errorf(exitcode.Usage,
+			"one of --fraction, --halt or --complete is required")
+	case selected > 1:
+		return RolloutPlan{}, exitcode.Errorf(exitcode.Usage,
+			"--fraction, --halt and --complete are mutually exclusive")
+	}
+
+	switch {
+	case complete:
+		return RolloutPlan{Status: StatusCompleted}, nil
+	case halt:
+		return RolloutPlan{Status: StatusHalted}, nil
+	}
+
+	value := *fraction
+	if math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 || value >= 1 {
+		return RolloutPlan{}, exitcode.Errorf(exitcode.Usage,
+			"--fraction must be between 0 and 1 (exclusive), got %v", value)
+	}
+	return RolloutPlan{Status: StatusInProgress, UserFraction: value}, nil
 }

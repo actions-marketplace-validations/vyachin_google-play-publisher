@@ -31,26 +31,28 @@ These are platform limits, not gaps in the tool. Accept them before building fur
 | Google Play Developer API terms | The tool must not be offered as a publishing service to third parties ([API Usage Instructions](https://developers.google.com/android-publisher/api_usage)) |
 | Signing | The tool **does not sign** AABs; it publishes an already signed artifact (upload key / Play App Signing) |
 
-## What the tool does (MVP scope)
+## What the tool does
 
 1. Validates the artifact and access (`doctor`).
 2. Uploads a signed AAB to the `internal` track.
-3. Sets the release status: `completed` by default, or `draft`; staged rollouts are
-   outside the MVP.
-4. Attaches localized release notes.
+3. Sets the release status: `completed` by default, `draft`, or a staged `inProgress` rollout
+   with a user fraction.
+4. Attaches localized release notes, an in-app update priority and, for production rollouts,
+   country targeting.
 5. Commits the edit and returns a machine-readable result (version code, sha256, status,
    edit id).
-6. Handles state conflicts safely (invalidated edit, reused version code) and does not wait
+6. Changes an existing rollout without a new upload (`rollout`: fraction, halt, complete) and
+   promotes a built version from one track to another (`promote`).
+7. Handles state conflicts safely (invalidated edit, reused version code) and does not wait
    for review: `internal` builds are usually available immediately.
-7. Supports `--debug`: detailed logs of every phase and HTTP exchange on `stderr`, with
+8. Supports `--debug`: detailed logs of every phase and HTTP exchange on `stderr`, with
    secrets redacted.
 
 ## Non-goals of the MVP
 
 - store listing management (icons, screenshots, descriptions);
 - tester groups and tester lists;
-- publishing to `beta`/`production`, staged rollouts and cross-track promotion
-  (`rollout`/`promote` — after the MVP);
+- managed publishing ("Publish changes") and the first app publication;
 - signing and building AABs (that is Gradle/bundletool);
 - creating an app and its first publication;
 - APK support (AAB only);
@@ -63,7 +65,7 @@ These are platform limits, not gaps in the tool. Accept them before building fur
 | --- | --- |
 | Official Go client + Edits API instead of hand-written REST or fastlane | [ADR-0001](adr/0001-androidpublisher-go-client.md) |
 | Stateless model, one edit per run, idempotency by version code | [ADR-0002](adr/0002-stateless-single-edit.md) |
-| Never cancel changes in review by default (`ERROR_IF_IN_REVIEW`) | [Architecture](02-architecture.md#5-review-policy) |
+| Never cancel changes in review by default (`ERROR_IF_IN_REVIEW`) | [Architecture](02-architecture.md#6-review-policy) |
 | Cobra with layered `cli → app → play` structure | [Stack](06-stack.md), [ADR-0003](adr/0003-cobra-command-layout.md) |
 | GitHub Actions packaging, version pinning and AAB identity | [ADR-0004](adr/0004-github-actions.md) |
 | CLI contract, exit codes, JSON for CI | [CLI](03-cli-contract.md) |

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `publish --in-app-update-priority 0..5` sets the in-app update priority of the release. Play
+  does not allow changing it once the release has been rolled out.
+- `publish --country` and `--include-rest-of-world` restrict an `inProgress` production release
+  to CLDR country codes. Codes are upper-cased, de-duplicated and sorted; any other status or
+  track is rejected locally with exit code 2.
+- `rollout` changes a release that is already on a track without uploading a bundle:
+  `--fraction` sets the user share and also resumes a halted release, `--halt` stops serving
+  the update and keeps the stored fraction, `--complete` rolls it out to everyone. The release
+  is read inside the edit, so its notes, name, version codes, in-app update priority and
+  country targeting are preserved.
+- `promote` declares the version codes of a source release on another track, optionally as a
+  staged rollout. The source is selected by `--version-code` or as the highest non-draft
+  release; notes and the release name are inherited unless overridden. Promotion to
+  `production` requires `--yes`.
+- `rollout` and `promote` support `--dry-run`, `--on-in-review` and
+  `--changes-not-sent-for-review`, reuse the ambiguous-commit reconciliation and report the
+  same JSON envelope as `publish` (`versionCodes`, optional `userFraction`, `from` for
+  `promote`).
+
 ## v0.0.7 — 2026-11-09
 
 ### Fixed

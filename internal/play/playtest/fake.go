@@ -15,6 +15,7 @@ type Fake struct {
 	DeleteEditFunc    func(ctx context.Context, pkg, editID string) error
 	UploadBundleFunc  func(ctx context.Context, pkg, editID string, r io.Reader, size int64) (play.BundleInfo, error)
 	UpdateTrackFunc   func(ctx context.Context, pkg, editID, track string, rel play.Release) error
+	TrackEditFunc     func(ctx context.Context, pkg, editID, track string) (play.TrackState, error)
 	ValidateEditFunc  func(ctx context.Context, pkg, editID string) error
 	CommitEditFunc    func(ctx context.Context, pkg, editID string, opts play.CommitOptions) error
 	TrackReleasesFunc func(ctx context.Context, pkg, track string) ([]play.ReleaseSummary, error)
@@ -24,6 +25,8 @@ type Fake struct {
 	CommitOptions   []play.CommitOptions
 	UploadedSizes   []int64
 	UpdatedReleases []play.Release
+	UpdatedTracks   []string
+	ReadTracks      []string
 }
 
 // CreateEdit records the call and returns "edit-1" by default.
@@ -59,10 +62,21 @@ func (f *Fake) UploadBundle(ctx context.Context, pkg, editID string, r io.Reader
 func (f *Fake) UpdateTrack(ctx context.Context, pkg, editID, track string, rel play.Release) error {
 	f.Calls = append(f.Calls, "UpdateTrack")
 	f.UpdatedReleases = append(f.UpdatedReleases, rel)
+	f.UpdatedTracks = append(f.UpdatedTracks, track)
 	if f.UpdateTrackFunc != nil {
 		return f.UpdateTrackFunc(ctx, pkg, editID, track, rel)
 	}
 	return nil
+}
+
+// TrackEdit records the call and returns an empty track by default.
+func (f *Fake) TrackEdit(ctx context.Context, pkg, editID, track string) (play.TrackState, error) {
+	f.Calls = append(f.Calls, "TrackEdit")
+	f.ReadTracks = append(f.ReadTracks, track)
+	if f.TrackEditFunc != nil {
+		return f.TrackEditFunc(ctx, pkg, editID, track)
+	}
+	return play.TrackState{Track: track}, nil
 }
 
 // ValidateEdit records the call.

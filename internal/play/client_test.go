@@ -446,3 +446,138 @@ func TestAuthErrorForMissingCredentialsFile(t *testing.T) {
 		t.Fatalf("code = %d, want %d", got, exitcode.Auth)
 	}
 }
+
+func TestUpdateTrackSendsReleaseFields(t *testing.T) {
+	var body map[string]any
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"track":"production","releases":[]}`)
+	})
+
+	client, _ := newClient(t, h)
+	err := client.UpdateTrack(context.Background(), "com.example.app", "edit-1", "production", play.Release{
+		VersionCodes:        []int64{42},
+		Status:              play.StatusInProgress,
+		UserFraction:        0.2,
+		InAppUpdatePriority: 3,
+		CountryTargeting:    &play.CountryTargeting{Countries: []string{"DE", "FR"}, IncludeRestOfWorld: true},
+	})
+	if err != nil {
+		t.Fatalf("UpdateTrack: %v", err)
+	}
+
+	rel := body["releases"].([]any)[0].(map[string]any)
+	if rel["inAppUpdatePriority"] != float64(3) {
+		t.Errorf("inAppUpdatePriority = %v, want 3", rel["inAppUpdatePriority"])
+	}
+	targeting, ok := rel["countryTargeting"].(map[string]any)
+	if !ok {
+		t.Fatalf("countryTargeting = %#v, want an object", rel["countryTargeting"])
+	}
+	if targeting["includeRestOfWorld"] != true {
+		t.Errorf("includeRestOfWorld = %v, want true", targeting["includeRestOfWorld"])
+	}
+	countries := targeting["countries"].([]any)
+	if len(countries) != 2 || countries[0] != "DE" || countries[1] != "FR" {
+		t.Errorf("countries = %v, want [DE FR]", countries)
+	}
+}
+
+func TestUpdateTrackOmitsEmptyFields(t *testing.T) {
+	var body map[string]any
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"track":"internal","releases":[]}`)
+	})
+
+	client, _ := newClient(t, h)
+	if err := client.UpdateTrack(context.Background(), "com.example.app", "edit-1", "internal", play.Release{
+		VersionCodes: []int64{42},
+		Status:       play.StatusCompleted,
+	}); err != nil {
+		t.Fatalf("UpdateTrack: %v", err)
+	}
+
+	rel := body["releases"].([]any)[0].(map[string]any)
+	if _, ok := rel["inAppUpdatePriority"]; ok {
+		t.Errorf("inAppUpdatePriority sent for a default release: %#v", rel)
+	}
+	if _, ok := rel["countryTargeting"]; ok {
+		t.Errorf("countryTargeting sent for a default release: %#v", rel)
+	}
+}
+
+func TestTrackEditReadsReleases(t *testing.T) {
+	var gotMethod, gotPath string
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{
+			"track": "production",
+			"releases": [
+				{"versionCodes": ["41"], "status": "completed", "name": "1.0.41"},
+				{
+					"versionCodes": ["42"],
+					"status": "inProgress",
+					"userFraction": 0.25,
+					"name": "1.0.42",
+					"inAppUpdatePriority": 3,
+					"releaseNotes": [{"language": "en-US", "text": "Fixes"}],
+					"countryTargeting": {"countries": ["DE"], "includeRestOfWorld": true}
+				}
+			]
+		}`)
+	})
+
+	client, _ := newClient(t, h)
+	state, err := client.TrackEdit(context.Background(), "com.example.app", "edit-1", "production")
+	if err != nil {
+		t.Fatalf("TrackEdit: %v", err)
+	}
+
+	if gotMethod != http.MethodGet {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+	wantPath := "/androidpublisher/v3/applications/com.example.app/edits/edit-1/tracks/production"
+	if gotPath != wantPath {
+		t.Errorf("path = %q, want %q", gotPath, wantPath)
+	}
+	if state.Track != "production" || len(state.Releases) != 2 {
+		t.Fatalf("state = %+v, want production with two releases", state)
+	}
+
+	staged := state.Releases[1]
+	if staged.Status != play.StatusInProgress || staged.UserFraction != 0.25 {
+		t.Errorf("staged release = %+v", staged)
+	}
+	if staged.InAppUpdatePriority != 3 || staged.Name != "1.0.42" {
+		t.Errorf("staged metadata = %+v", staged)
+	}
+	if len(staged.ReleaseNotes) != 1 || staged.ReleaseNotes[0].Language != "en-US" {
+		t.Errorf("staged notes = %+v", staged.ReleaseNotes)
+	}
+	if staged.CountryTargeting == nil || !staged.CountryTargeting.IncludeRestOfWorld ||
+		len(staged.CountryTargeting.Countries) != 1 || staged.CountryTargeting.Countries[0] != "DE" {
+		t.Errorf("staged targeting = %+v", staged.CountryTargeting)
+	}
+}
+
+func TestTrackEditNotFound(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":{"code":404,"message":"Track not found."}}`)
+	})
+
+	client, _ := newClient(t, h)
+	_, err := client.TrackEdit(context.Background(), "com.example.app", "edit-1", "missing")
+	if code := exitcode.From(err); code != exitcode.NotFound {
+		t.Fatalf("code = %d, want %d: %v", code, exitcode.NotFound, err)
+	}
+}

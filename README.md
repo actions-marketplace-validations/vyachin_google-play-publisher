@@ -76,6 +76,34 @@ legacy cross-check. Locales without a file for that version code are skipped; wh
 exists at all, the command fails with exit code 2 and the path it checked. `--release-name`
 is optional; when it is empty, Play generates the name from the AAB version name.
 
+## Staged rollouts and promotion
+
+`rollout` changes a release that is already on a track without uploading a bundle:
+
+```bash
+# raise a staged rollout to 20% of users
+google-play-publisher rollout -p com.example.app -t production --fraction 0.2
+
+# halt it, then resume from the stored fraction
+google-play-publisher rollout -p com.example.app -t production --version-code 42 --halt
+google-play-publisher rollout -p com.example.app -t production --version-code 42 --fraction 0.2
+
+# finish the rollout
+google-play-publisher rollout -p com.example.app -t production --version-code 42 --complete
+```
+
+`promote` declares the version codes of one track on another, so no second build is needed:
+
+```bash
+google-play-publisher promote -p com.example.app --from internal --to beta
+google-play-publisher promote -p com.example.app --from beta --to production \
+  --version-code 42 --rollout 0.1 --yes
+```
+
+`--to production` requires `--yes`. On `promote`, `--changelog-dir` requires `--version-code`
+because there is no AAB to read it from; without `--changelog-dir` the source release notes and
+name are reused.
+
 ## GitHub Actions
 
 A setup action installs a released CLI and a publish action runs the same command as the CLI,
@@ -113,6 +141,10 @@ production.
   consumes the `versionCode`, so never dry-run a release build.
 - `--debug` — detailed HTTP, phase and retry logs (secrets are redacted).
 - `--if-exists=skip` — idempotent rerun when the AAB version code is already on the track.
+- `--in-app-update-priority 0..5` — in-app update priority of the release; it cannot change once
+  the rollout has started.
+- `--country DE,AT --include-rest-of-world` — country targeting; Play accepts it only for an
+  `inProgress` release on the `production` track.
 - `google-play-publisher completion bash|zsh|fish|powershell` — shell completion.
 
 ## Limitations

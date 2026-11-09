@@ -55,13 +55,13 @@ test-only.
 
 ```
 google-play-publisher
-├── publish     (group: Release)  — MVP
-├── doctor      (group: Inspect)  — MVP
-├── status      (group: Inspect)  — MVP
-├── version                       — MVP
-├── completion                    — from cobra, free
-├── rollout     (group: Release)  — after the MVP
-└── promote     (group: Release)  — after the MVP
+├── publish     (group: Release)
+├── rollout     (group: Release)
+├── promote     (group: Release)
+├── doctor      (group: Inspect)
+├── status      (group: Inspect)
+├── version
+└── completion                    — from cobra, free
 ```
 
 Growth rule: a new command is one file in `internal/cli` plus a use case in `internal/app`

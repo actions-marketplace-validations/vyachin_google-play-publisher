@@ -262,3 +262,150 @@ func TestParseExistsPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestNewPlanReleaseFields(t *testing.T) {
+	plan, err := release.NewPlan(release.Input{
+		Package:             "com.example.app",
+		Track:               "production",
+		Status:              "inProgress",
+		Rollout:             rollout(0.1),
+		InAppUpdatePriority: 4,
+		Countries:           []string{"fr", "de", "DE"},
+		IncludeRestOfWorld:  true,
+	})
+	if err != nil {
+		t.Fatalf("NewPlan: %v", err)
+	}
+
+	if plan.InAppUpdatePriority != 4 {
+		t.Errorf("priority = %d, want 4", plan.InAppUpdatePriority)
+	}
+	want := []string{"DE", "FR"}
+	if len(plan.Countries) != len(want) {
+		t.Fatalf("countries = %v, want %v", plan.Countries, want)
+	}
+	for i, code := range want {
+		if plan.Countries[i] != code {
+			t.Fatalf("countries = %v, want deduplicated and sorted %v", plan.Countries, want)
+		}
+	}
+	if !plan.IncludeRestOfWorld {
+		t.Error("include rest of world was dropped")
+	}
+}
+
+func TestNewPlanRejectsInvalidReleaseFields(t *testing.T) {
+	tests := []struct {
+		name string
+		in   release.Input
+		want string
+	}{
+		{
+			name: "priority too high",
+			in:   release.Input{Package: "com.example.app", InAppUpdatePriority: 6},
+			want: "--in-app-update-priority",
+		},
+		{
+			name: "priority negative",
+			in:   release.Input{Package: "com.example.app", InAppUpdatePriority: -1},
+			want: "--in-app-update-priority",
+		},
+		{
+			name: "country code too long",
+			in: release.Input{
+				Package: "com.example.app", Track: "production", Status: "inProgress",
+				Rollout: rollout(0.1), Countries: []string{"DEU"},
+			},
+			want: "invalid country code",
+		},
+		{
+			name: "country code with digits",
+			in: release.Input{
+				Package: "com.example.app", Track: "production", Status: "inProgress",
+				Rollout: rollout(0.1), Countries: []string{"D1"},
+			},
+			want: "invalid country code",
+		},
+		{
+			name: "targeting on a non-production track",
+			in: release.Input{
+				Package: "com.example.app", Track: "internal", Status: "completed",
+				Countries: []string{"DE"},
+			},
+			want: "only supported for an inProgress release on the production track",
+		},
+		{
+			name: "targeting on a completed production release",
+			in: release.Input{
+				Package: "com.example.app", Track: "production", Status: "completed",
+				Countries: []string{"DE"},
+			},
+			want: "only supported for an inProgress release on the production track",
+		},
+		{
+			name: "rest of world without countries",
+			in: release.Input{
+				Package: "com.example.app", Track: "production", Status: "inProgress",
+				Rollout: rollout(0.1), IncludeRestOfWorld: true,
+			},
+			want: "--include-rest-of-world requires at least one --country",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := release.NewPlan(tt.in)
+			if code := exitcode.From(err); code != exitcode.Usage {
+				t.Fatalf("code = %d, want %d: %v", code, exitcode.Usage, err)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error %q does not contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewRolloutPlan(t *testing.T) {
+	tests := []struct {
+		name     string
+		fraction *float64
+		halt     bool
+		complete bool
+		want     release.Status
+		wantFrac float64
+		wantErr  string
+	}{
+		{name: "fraction", fraction: rollout(0.3), want: release.StatusInProgress, wantFrac: 0.3},
+		{name: "halt", halt: true, want: release.StatusHalted},
+		{name: "complete", complete: true, want: release.StatusCompleted},
+		{name: "nothing selected", wantErr: "--fraction, --halt or --complete is required"},
+		{name: "fraction and halt", fraction: rollout(0.3), halt: true, wantErr: "mutually exclusive"},
+		{name: "halt and complete", halt: true, complete: true, wantErr: "mutually exclusive"},
+		{name: "zero fraction", fraction: rollout(0), wantErr: "between 0 and 1"},
+		{name: "one fraction", fraction: rollout(1), wantErr: "between 0 and 1"},
+		{name: "negative fraction", fraction: rollout(-0.1), wantErr: "between 0 and 1"},
+		{name: "NaN fraction", fraction: rollout(math.NaN()), wantErr: "between 0 and 1"},
+		{name: "infinite fraction", fraction: rollout(math.Inf(1)), wantErr: "between 0 and 1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, err := release.NewRolloutPlan(tt.fraction, tt.halt, tt.complete)
+			if tt.wantErr != "" {
+				if code := exitcode.From(err); code != exitcode.Usage {
+					t.Fatalf("code = %d, want %d: %v", code, exitcode.Usage, err)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %q does not contain %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewRolloutPlan: %v", err)
+			}
+			if plan.Status != tt.want || plan.UserFraction != tt.wantFrac {
+				t.Fatalf("plan = %+v, want status %s fraction %v", plan, tt.want, tt.wantFrac)
+			}
+		})
+	}
+}

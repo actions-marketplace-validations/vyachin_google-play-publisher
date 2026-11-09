@@ -20,6 +20,9 @@ cmd/google-play-publisher/   main: build App, call cli.Execute, os.Exit(code)
 internal/cli/                cobra: root + commands (thin layer, one file per command)
   root.go                    PersistentFlags, groups, Execute
   publish.go                 flags → app.Publish
+  rollout.go                 flags → app.Rollout
+  promote.go                 flags → app.Promote
+  trackchange.go             shared JSON/text result of rollout and promote
   doctor.go                  flags → app.Doctor
   status.go                  flags → app.Status
 internal/app/                use cases without cobra and without androidpublisher
@@ -52,6 +55,7 @@ type API interface {
     CreateEdit(ctx context.Context, pkg string) (editID string, err error)
     UploadBundle(ctx context.Context, pkg, editID string, r io.Reader, size int64) (BundleInfo, error)
     UpdateTrack(ctx context.Context, pkg, editID, track string, rel Release) error
+    TrackEdit(ctx context.Context, pkg, editID, track string) (TrackState, error) // read-only, inside the edit
     ValidateEdit(ctx context.Context, pkg, editID string) error
     CommitEdit(ctx context.Context, pkg, editID string, opts CommitOptions) error
     DeleteEdit(ctx context.Context, pkg, editID string) error
@@ -154,10 +158,12 @@ only after everything else has been checked.
 
 ### Track update
 
-The MVP sends **one release** in `tracks.update` (as in the Google example). This is a
-declarative replacement of the resource: the tool does not append to history. If an
-integration test shows that a merge is needed (preserving previous `completed` releases), a
-`tracks.get → merge → update` mode can be added without changing the CLI.
+`tracks.update` is a declarative replacement of the release resource. `publish` sends **one
+release** for the uploaded version code; it does not append to history. `rollout` and
+`promote` send a release that was built from the current state of the track, so notes, name,
+version codes, in-app update priority and country targeting survive the update. If an
+integration test shows that the previous `completed` releases must be sent as well, the
+merge can be added in `app` without changing the CLI.
 
 ### Commit
 
@@ -177,7 +183,40 @@ integration test shows that a merge is needed (preserving previous `completed` r
   code and edit ID with code 6. See
   [05-errors.md](05-errors.md#4-ambiguous-commit).
 
-## 5. Review policy
+## 5. The `rollout` and `promote` flows
+
+Neither command uploads an artifact, so both reuse the edit lifecycle and the commit logic of
+`publish`:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CLI as google-play-publisher
+    participant API as Play API
+
+    CLI->>API: edits.insert(package)
+    API-->>CLI: editId
+    CLI->>API: edits.tracks.get(editId, track) [rollout; promote reads source and destination]
+    API-->>CLI: current releases
+    CLI->>API: edits.tracks.update(editId, track, release)
+    CLI->>API: edits.validate(editId) [dry-run only]
+    CLI->>API: edits.commit(editId, behavior)
+    CLI-->>CLI: human output or JSON
+```
+
+- `app.PrepareRollout` and `app.PreparePromote` validate every local input before the API
+  client is constructed, exactly like `app.Prepare`; the validated value is passed to
+  `RolloutPrepared` / `PromotePrepared`.
+- The release is read with `edits.tracks.get` **inside the edit**, not through the read-only
+  releases API, so the state that is updated is the state the edit was opened with.
+- `rollout` changes only `status` and `userFraction`. `halt` keeps the stored fraction,
+  `complete` clears it, and a fraction resumes a halted release.
+- `promote` copies the version codes of the source release to the destination track and
+  inherits its notes and name unless the flags override them.
+- Both commands share the ambiguous-commit reconciliation and the manual-review fallback:
+  the difference from `publish` is only what the edit contains.
+
+## 6. Review policy
 
 | Situation | Behavior |
 | --- | --- |
@@ -191,7 +230,7 @@ For `internal` there is usually no review: the build becomes available immediate
 exceptions are the app's first rollout and a previously rejected submission; then `commit`
 goes to review, which is a normal scenario, not a tool error.
 
-## 6. Idempotency and recovery
+## 7. Idempotency and recovery
 
 The natural key of a publication is `versionCode`. It is unique within the app and cannot be
 reused for a new release.
@@ -214,7 +253,7 @@ uploading, so the tool detects this and applies `--if-exists`; `--version-code` 
 stops with code 2 before any API call. Without a readable AAB manifest the run also stops
 locally.
 
-## 7. Timeouts and cancellation
+## 8. Timeouts and cancellation
 
 | Parameter | Default | Notes |
 | --- | --- | --- |
@@ -233,7 +272,7 @@ recovery budget (`WithRecoveryBase` + `context.WithTimeout`). The recovery conte
 parented by the signal context, not by the expired operation context, so a signal interrupts
 an already running recovery and keeps exit code 130.
 
-## 8. Logging and debug mode
+## 9. Logging and debug mode
 
 - `log/slog`; `INFO` by default, `--debug` switches to `DEBUG`.
 - Everything is written to `stderr`; `stdout` carries only the result. With `--json`, `stdout`
@@ -259,7 +298,7 @@ an already running recovery and keeps exit code 130.
 - The final JSON (`--json`) has a stable schema, see
   [03-cli-contract.md](03-cli-contract.md#7-debug-mode).
 
-## 9. Security
+## 10. Security
 
 - Authentication is ADC. The tool only receives the path to the service account JSON key via
   `GOOGLE_APPLICATION_CREDENTIALS` or `--credentials`; it knows nothing else about the key.
@@ -268,7 +307,7 @@ an already running recovery and keeps exit code 130.
 - The tool never prints or stores the AAB; it opens the file read-only.
 - Logs record `editId` and `versionCode` — enough for an audit together with Play Console.
 
-## 10. Testability
+## 11. Testability
 
 - **Domain unit tests:** tables for statuses, fractions, release notes, track names, exit
   codes.
@@ -286,7 +325,7 @@ an already running recovery and keeps exit code 130.
   `t.Cleanup`.
 - **Contract test:** once per release — run against a real app; catches API and client changes.
 
-## 11. Deliberate non-goals
+## 12. Deliberate non-goals
 
 - parallel publications and a queue;
 - a local transaction journal and "resume after process death";

@@ -29,6 +29,9 @@ type publishFlags struct {
 	OnInReview              string
 	IfExists                string
 	DryRun                  bool
+	InAppUpdatePriority     int
+	Countries               []string
+	IncludeRestOfWorld      bool
 }
 
 type publishOutput struct {
@@ -86,6 +89,12 @@ optional assertions. The default track is "internal".`,
 	f.StringVar(&flags.OnInReview, "on-in-review", "error", "behavior when changes are in review: error or replace")
 	f.StringVar(&flags.IfExists, "if-exists", "fail", "behavior when versionCode is already released: fail or skip")
 	f.BoolVar(&flags.DryRun, "dry-run", false, "validate the edit and delete it without committing")
+	f.IntVar(&flags.InAppUpdatePriority, "in-app-update-priority", 0,
+		"in-app update priority from 0 (disabled) to 5 (highest)")
+	f.StringSliceVar(&flags.Countries, "country", nil,
+		"restrict an inProgress production release to these CLDR country codes (repeatable)")
+	f.BoolVar(&flags.IncludeRestOfWorld, "include-rest-of-world", false,
+		"include the rest of the world in --country targeting")
 
 	registerTrackCompletion(cmd)
 	return cmd
@@ -132,6 +141,9 @@ func runPublish(cmd *cobra.Command, a *App, g *globalFlags, flags *publishFlags)
 		ChangesNotSentForReview: flags.ChangesNotSentForReview,
 		InReviewBehavior:        inReview,
 		DryRun:                  flags.DryRun,
+		InAppUpdatePriority:     flags.InAppUpdatePriority,
+		Countries:               flags.Countries,
+		IncludeRestOfWorld:      flags.IncludeRestOfWorld,
 	}
 
 	// Validate every local input before the client is built: with bad input

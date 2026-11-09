@@ -12,6 +12,7 @@ type API interface {
 	DeleteEdit(ctx context.Context, pkg, editID string) error
 	UploadBundle(ctx context.Context, pkg, editID string, r io.Reader, size int64) (BundleInfo, error)
 	UpdateTrack(ctx context.Context, pkg, editID, track string, rel Release) error
+	TrackEdit(ctx context.Context, pkg, editID, track string) (TrackState, error)
 	ValidateEdit(ctx context.Context, pkg, editID string) error
 	CommitEdit(ctx context.Context, pkg, editID string, opts CommitOptions) error
 	TrackReleases(ctx context.Context, pkg, track string) ([]ReleaseSummary, error)
@@ -53,13 +54,29 @@ type LocalizedText struct {
 	Text     string
 }
 
-// Release is a desired track release.
+// CountryTargeting restricts a release to a set of countries. Play accepts it
+// only for an inProgress release on the production track.
+type CountryTargeting struct {
+	Countries          []string
+	IncludeRestOfWorld bool
+}
+
+// Release is a desired track release. The optional fields are omitted when
+// they are zero, so an empty Release keeps Play's previous values.
 type Release struct {
-	VersionCodes []int64
-	Status       string
-	UserFraction float64
-	ReleaseNotes []LocalizedText
-	Name         string
+	VersionCodes        []int64
+	Status              string
+	UserFraction        float64
+	ReleaseNotes        []LocalizedText
+	Name                string
+	InAppUpdatePriority int64
+	CountryTargeting    *CountryTargeting
+}
+
+// TrackState is the current content of a track inside an edit.
+type TrackState struct {
+	Track    string
+	Releases []Release
 }
 
 // CommitOptions controls edits.commit.

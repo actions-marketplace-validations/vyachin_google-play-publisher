@@ -35,7 +35,7 @@ Instructions for the person who puts the tool into service. Until this is done,
 | Permission | Purpose | Required |
 | --- | --- | --- |
 | Release to testing tracks | `internal` | **Yes** (enough for the MVP) |
-| Release to production, exclude devices, and use Play App Signing | `production`, rollouts | Not in the MVP |
+| Release to production, exclude devices, and use Play App Signing | `production`: `publish --status inProgress`, `rollout`, `promote --to production` | Yes, to manage production releases |
 | Manage store presence | only if listings are added later | No |
 | Admin / Owner | — | **No, never** |
 

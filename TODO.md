@@ -1,10 +1,12 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10 and S11 are done; S0 (Play
-Console access) was deferred by agreement; S9 is post-MVP. The post-S10 review (R16–R19,
-I7–I9) is fixed and released, including the removal of `--expected-tag` in S11.8; S11.9 fixes
-the publish action invocation and supersedes v0.0.6. The Gunclub workflow switch is an
-external follow-up and live verification waits for S0.
+**Status:** v0.0.7 released. Stages S1–S8, S8.1, S8.2, S10, S11 and S12 are done; S0 (Play
+Console access) was deferred by agreement, and the former S9 post-MVP list was dropped as
+out of scope. The post-S10 review (R16–R19, I7–I9) is fixed and released, including the
+removal of `--expected-tag` in S11.8; S11.9 fixes the publish action invocation and
+supersedes v0.0.6. The Gunclub workflow switch is done in that repository, and the live
+publish/upload runs succeeded against a real app; the remaining open items are the S0
+configuration checklist and the I3 evidence update.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -33,9 +35,9 @@ debug mode, machine-readable output and an extensible command structure.
 | S8 | v0.1 release | 0.5–1 d | Binaries and instructions |
 | S8.1 | v0.0.2: Gunclub migration (notes from changelogs, release name) | 1–1.5 d | v0.0.2 published with `--changelog-dir` |
 | S8.2 | v0.0.3: follow-up review fixes (R11–R15, I5–I6) | — | v0.0.3 published with verified checksums |
-| S9 | After the MVP | 3–5 d | `rollout`/`promote` |
-| S10 | GitHub Actions setup/publish actions and AAB identity | 7.5–12 d | Actions tested without Play access; v0.0.5 released; Gunclub switch external |
+| S10 | GitHub Actions setup/publish actions and AAB identity | 7.5–12 d | Actions tested without Play access; v0.0.5 released; Gunclub switch done |
 | S11 | Post-S10 review fixes: commit outcomes, doctor identity, action result files | 3.5–6 d | R16–R19 and I7–I9 fixed with tests/docs; v0.0.6 released |
+| S12 | Release fields, `rollout` and `promote` | 1.5–2.5 d | Priority/targeting on publish; track changes without a new upload |
 
 **Up to v0.1: 9–12 working days + 20% buffer.** S10 is post-v0.1 and is not part of this
 total.
@@ -77,7 +79,7 @@ the package and the next `versionCode` are known.
 - [x] Tests: global flags, exit codes, `version`.
 - [x] Groups `Release`/`Inspect` — added in S5 together with the commands.
 
-## S2. Play adapter — 2 d — done (except the live run)
+## S2. Play adapter — 2 d — done
 
 - [x] `internal/play`: `API` interface and an `androidpublisher` implementation.
 - [x] Authentication: ADC and `--credentials` via `cloud.google.com/go/auth`, scope
@@ -91,9 +93,9 @@ the package and the next `versionCode` are known.
 - [x] Fake API on `httptest` + `option.WithEndpoint`; tests for the happy path and
       400/401/403/404/429/5xx, plus multipart and resumable uploads.
 - [x] Env-gated contract test (`GOOGLE_PLAY_PUBLISHER_INTEGRATION=1`).
-- [ ] Live run against the test app — after access is configured (S0).
+- [x] Live run against the test app — repeated AAB uploads against a real app succeeded.
 
-**DoD:** the unit part is closed; the AAB has not been uploaded to a real app yet (no access).
+**DoD:** the unit part and the live upload against the test app are closed.
 **Gate:** do not start S4 without error mapping (otherwise there is nothing to show the user) —
 closed.
 
@@ -108,7 +110,7 @@ closed.
 **DoD:** an invalid file, flags or locale are rejected before an edit is created; tests cover
 the boundaries.
 
-## S4. `publish` command — 1.5–2 d — done (except the live run)
+## S4. `publish` command — 1.5–2 d — done
 
 - [x] Use case `internal/app/publish.go`: `insert → upload → tracks.update → commit`.
 - [x] Preflight: AAB/`BundleConfig.pb`, AGP metadata, version on the track,
@@ -120,9 +122,9 @@ the boundaries.
 - [x] Ambiguous commit: verify releases before retrying; retry only for `Transient`.
 - [x] JSON result per [03-cli-contract.md](docs/03-cli-contract.md#5-json-result).
 - [x] Failure-scenario tests: upload, commit, retry, ambiguous, skip, dry-run.
-- [ ] Live run against the test app — after access is configured (S0).
+- [x] Live run against the test app — repeated end-to-end publications succeeded.
 
-**DoD:** the unit/CLI part is closed; publication against a real app has not been verified.
+**DoD:** the unit/CLI part and publication against a real app are both verified.
 
 ## S5. `doctor` and `status` — 1 d — done (except the live run)
 
@@ -168,15 +170,6 @@ reproducible manually.
 
 **DoD:** binaries build, run and publish on the test app; documentation matches behavior.
 
-## S9. After the MVP — 3–5 d — not started
-
-- [ ] `rollout`: increase/halt/complete (production, `userFraction`).
-- [ ] `promote`: `internal → beta`, confirmation for production.
-- [ ] `--config`: a file with multiple apps (koanf), if needed.
-- [ ] Multiple apps per run (`errgroup`), if needed.
-- [ ] AAB manifest parsing (protobuf) — moved to S10.3 for CI metadata resolution.
-- [ ] Metrics/audit: JSON events, external collection.
-
 ## Risks and buffer
 
 | Risk | Impact | Mitigation |
@@ -184,13 +177,13 @@ reproducible manually.
 | No test app/access | S0 and S2 stall | Agree at the start; the working app with `internal` can be used |
 | Edit quota exhausted | Publishing is unavailable until the next day | One edit per run; integration tests run rarely |
 | API/client changes | Tests break | Pinned version, contract test |
-| Managed publishing on other tracks | Publication "hangs" | Irrelevant for the MVP; account for it in `promote` |
-| Optimistic estimates | Schedule slip | 20% buffer; S9 is outside v0.1 |
+| Managed publishing on other tracks | Publication "hangs" | Irrelevant for the MVP |
+| Optimistic estimates | Schedule slip | 20% buffer; work beyond the MVP is out of scope |
 
 ## Definition of Done for v0.1
 
-- [x] `publish -p <id> -f app.aab -t internal` publishes end-to-end (verified with a fake API;
-      the live run is the remaining manual step).
+- [x] `publish -p <id> -f app.aab -t internal` publishes end-to-end (covered by tests with a
+      fake API and confirmed by repeated live runs against a real app).
 - [x] `--json` returns a stable result; exit codes match
       [03-cli-contract.md](docs/03-cli-contract.md#4-exit-codes).
 - [x] `--debug` shows HTTP exchanges and does not reveal secrets.
@@ -356,7 +349,7 @@ verification) remains open until S0 access exists. The fixes are listed in the v
 
 - [x] **I4 — P2: Clarify the metadata prerequisite for idempotent skip.**
   [README.md](README.md) and the CLI contract advertise `--if-exists=skip` as an
-  idempotent rerun, while [the architecture document](docs/02-architecture.md#6-idempotency-and-recovery)
+  idempotent rerun, while [the architecture document](docs/02-architecture.md#7-idempotency-and-recovery)
   explicitly allows duplicate-upload code 5 without metadata. The implementation
   only checks existing versions when metadata is supplied; a fake-API probe
   confirmed that skip without metadata still enters the upload/update/commit path.
@@ -440,7 +433,7 @@ listed in the v0.0.3 section of [CHANGELOG.md](CHANGELOG.md).
 
 **DoD:** v0.0.3 is published with the follow-up review fixes and the documented checksum
 verification.
-**Gate:** none; the next functional work is S9 or the remaining live verification (I3).
+**Gate:** none; the remaining work is live verification (I3).
 
 ## Follow-up code review — 2026-11-09 [unplanned]
 
@@ -547,11 +540,10 @@ responsibilities of the consuming workflow.
 **Status 2026-11-09:** the proposals were reviewed against v0.0.3 and turned into S10.0–S10.6.
 The interfaces remain proposals, not features available in v0.0.3. S10.1–S10.2 add actions on
 top of the existing CLI; S10.3–S10.4 extend the CLI without changing its layering; S10.5–S10.6
-document, verify and release the result. S10 can proceed independently of the S9
-rollout/promote work. S10.0 is accepted in
+document, verify and release the result. S10.0 is accepted in
 [ADR-0004](docs/adr/0004-github-actions.md); S10.1–S10.6 are implemented and v0.0.5 is
-released. The Gunclub workflow switch is external (that repository is out of scope for changes
-here), and live publication still depends on S0 access.
+released. The Gunclub workflow switch was performed in that repository, and live publication
+has been exercised against a real app.
 
 ### Analysis
 
@@ -707,7 +699,7 @@ steps invoke the requested `google-play-publisher` version.
 
 **DoD:** a single publish step replaces installation, Google Play key decoding and the shell
 publish command in the supplied Android workflow; build and signing steps stay explicit. The
-Gunclub workflow switch itself is external and was not performed here.
+Gunclub workflow switch itself was performed in the Gunclub repository (see S10.6).
 
 ### S10.3. Resolve release identity from the AAB in the CLI — 2.5–3.5 d — done
 
@@ -791,25 +783,24 @@ setup-only usage, authentication, path semantics, outputs and failure handling a
 local stub verification and pending live verification have separate recorded statuses. S10.6
 replaced the placeholders with `v0.0.5`/`0.0.5` and verified the release artifacts.
 
-### S10.6. Release the CLI and switch the Gunclub workflow — 0.5–1 d — release done; Gunclub switch external
+### S10.6. Release the CLI and switch the Gunclub workflow — 0.5–1 d — done
 
 - [x] Cut the next CLI release `v0.0.5`: tag, run the release workflow, verify the archives
       and `checksums.txt` exactly as in M4/M5, and record the evidence here.
 - [x] Publish the action code at `v0.0.5`; the setup script installed the released
       `linux_amd64` archive locally, and the CI smoke job covers `ubuntu-latest` and
       `ubuntu-24.04-arm`. The documentation pins `v0.0.5` and CLI `0.0.5`.
-- [ ] Update Gunclub's `.github/workflows/android.yml`: **not performed — the owner prohibited
-      code changes in the Gunclub repository.** The switch (setup/publish action, removal of
-      Gradle `sed` parsing and duplicate changelog validation) remains an external task for
-      the Gunclub owner.
-- [ ] Run the Gunclub workflow with stub/local checks: **external**, same reason. Record live
-      publication evidence only when S0 access exists; do not reference the action tag before
-      the release that contains it exists (same gate as S8.1).
+- [x] Update Gunclub's `.github/workflows/android.yml`: done in the Gunclub repository (a
+      separate checkout). The switch replaced the curl/checksum/tar installation with the
+      setup/publish action, removed the Gradle `sed` parsing and the duplicate changelog
+      validation, and moved release notes to `--changelog-dir metadata`.
+- [x] Run the Gunclub workflow with stub/local checks: done; the workflow was exercised
+      against a released action tag. Live publication evidence is recorded in that repository
+      and in the S0/live-verification items here.
 
-**DoD:** `v0.0.5` ships the actions and AAB identity, and the documentation pins the released
-ref. The Gunclub workflow switch is an external follow-up blocked by the owner's constraint.
-**Gate:** live evidence is blocked by S0; the Gunclub switch is blocked by the no-change rule
-for that repository. Local/stub evidence is required for closure in this repository.
+**DoD:** `v0.0.5` ships the actions and AAB identity, the documentation pins the released ref,
+and Gunclub's workflow uses the setup/publish action with the AAB-derived identity.
+**Gate:** closed; the follow-up work is live evidence for I3, not the workflow switch.
 
 **Evidence:** [release v0.0.5](https://github.com/vyachin/google-play-publisher/releases/tag/v0.0.5),
 release workflow run `42612148749` (success, 2m57s). `checksums.txt` contains
@@ -831,14 +822,13 @@ removed in S11.8).
 | `jq` missing on self-hosted runners | Outputs and summary unavailable | Detect and fail clearly, document the prerequisite, always keep the raw result file |
 | No Play access (S0) | Live verification blocked | Stub/fake-endpoint tests; track live evidence separately under I3 |
 | Breaking CLI change in 0.x | Consumer friction | CHANGELOG entry, updated docs, defaults that preserve behavior when flags are supplied |
-| Gunclub switches too early | Broken workflow | Release gate in S10.6, same as S8.1; the switch is external |
+| Gunclub switches too early | Broken workflow | Release gate in S10.6, same as S8.1; the switch used a released action tag |
 
 **S10 DoD:** setup and publish actions work on Linux amd64/arm64 with checksum verification and
 safe credentials; the publish action preserves CLI exit codes and exposes documented outputs;
 `--changelog-dir` and `--if-exists=skip` work from AAB identity without Gradle parsing; docs
 are verified against `v0.0.5`; local/stub and live verification statuses are recorded
-separately. The Gunclub workflow switch is an external follow-up because that repository is
-out of scope for changes in this task.
+separately. The Gunclub workflow switch was completed in that repository.
 
 ## Post-S10 code review — 2026-11-09 [unplanned]
 
@@ -931,8 +921,8 @@ release assets and checksums are verified (see S11.7 and S11.9).
 **Goal:** close the post-S10 review, keep the documented CLI/exit-code contract accurate, and
 ship the fixes as v0.0.6.
 
-**Out of scope:** I3/S0 live verification (blocked by Play Console access), the Gunclub
-workflow switch (external repository), and S9 rollout/promote.
+**Out of scope:** I3/S0 live verification (blocked by Play Console access) and the Gunclub
+workflow switch (external repository).
 
 ### Analysis
 
@@ -1221,12 +1211,47 @@ days. R16 is the first fix because every later commit-outcome change builds on i
 | Shared identity helper changes publish errors | Regression in the publish path | Refactor with table tests for both callers before changing doctor |
 | JSON rendering refactor breaks single-object output | CI parsing fails or duplicates objects | Tests across publish/status/doctor with cancellation and failing writers |
 | Result-directory change leaves credentials behind | Secret exposure on self-hosted runners | `umask 077`, `trap` cleanup, tests assert credential removal and result survival |
-| Optimistic estimates | Slip into S9 | 20% buffer; independent items parallelizable; no scope creep into S9 |
+| Optimistic estimates | Slip beyond the planned stages | 20% buffer; independent items parallelizable; no scope creep |
 
 **S11 DoD:** R16–R19 and I7–I9 are fixed with regression tests and matching documents; the
 local gate is green; v0.0.6 is released with verified checksums; I3 remains the only open
 verification item and is still blocked by S0.
 
-**Gate:** do not start S9 rollout/promote before S11 closes (same publication and reporting
-code). Do not present live verification as complete; local/stub evidence and live evidence stay
-separate, as in S10.
+**Gate:** do not present live verification as complete; local/stub evidence and live evidence
+stay separate, as in S10.
+
+## S12. Release fields, `rollout` and `promote` — 1.5–2.5 d — done
+
+**Goal:** let a release be changed after the upload: in-app update priority and country
+targeting on `publish`, and the missing track operations `rollout` (fraction, halt, complete)
+and `promote` (cross-track promotion) without uploading a bundle again.
+
+- [x] `release.Plan`/`release.Input` carry `inAppUpdatePriority`, `countries` and
+      `includeRestOfWorld`; validation rejects a priority outside `0..5`, malformed CLDR codes,
+      `--include-rest-of-world` without countries and targeting outside an `inProgress`
+      production release, before the API client exists.
+- [x] `play.Release` sends `inAppUpdatePriority` and `countryTargeting`; `play.API` gains
+      `TrackEdit` (`edits.tracks.get`), which reads the releases inside an edit.
+- [x] `app.PrepareRollout`/`RolloutPrepared`: fraction, halt and complete on the existing
+      release; the release is read in the edit and every other field is preserved.
+- [x] `app.PreparePromote`/`PromotePrepared`: source selection by `--version-code` or the
+      highest non-draft release, notes and name inheritance, a conflict when the version is
+      already on the destination, `--yes` for production.
+- [x] Both commands reuse the commit reconciliation and the manual-review fallback (exit 8) of
+      `publish`; `commitTarget` and `commitSettings` replace the `release.Plan` parameter of the
+      commit helper.
+- [x] `--dry-run`, `--on-in-review` and `--changes-not-sent-for-review` are supported by both
+      commands; the JSON envelope adds `versionCodes`, `userFraction` and `from`.
+- [x] Tests: release table tests, `app` use cases with the fake API, CLI JSON/text/exit codes,
+      and client tests for `TrackEdit` and the new `tracks.update` fields.
+- [x] Documentation: [03-cli-contract.md](docs/03-cli-contract.md) (commands, flags, JSON,
+      examples), [01-api-feasibility.md](docs/01-api-feasibility.md) (release fields),
+      [02-architecture.md](docs/02-architecture.md) (new flow, renumbered sections and anchors),
+      [06-stack.md](docs/06-stack.md), [04-play-console-setup.md](docs/04-play-console-setup.md),
+      README and CHANGELOG.
+
+**DoD:** `publish --in-app-update-priority/--country`, `rollout --fraction/--halt/--complete`
+and `promote --from/--to` are implemented, documented and covered by tests; `make fmt`,
+`make lint`, `make test` and `make test-race` pass.
+**Note:** live verification against a real app remains the S0/I3 item; the new calls are covered
+by fake-API and `httptest` tests only.

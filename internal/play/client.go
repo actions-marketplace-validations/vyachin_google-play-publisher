@@ -245,11 +245,13 @@ func (c *Client) UpdateTrack(ctx context.Context, pkg, editID, track string, rel
 	update := &androidpublisher.Track{
 		Track: track,
 		Releases: []*androidpublisher.TrackRelease{{
-			VersionCodes: googleapi.Int64s(rel.VersionCodes),
-			Status:       rel.Status,
-			UserFraction: rel.UserFraction,
-			ReleaseNotes: notes,
-			Name:         rel.Name,
+			VersionCodes:        googleapi.Int64s(rel.VersionCodes),
+			Status:              rel.Status,
+			UserFraction:        rel.UserFraction,
+			ReleaseNotes:        notes,
+			Name:                rel.Name,
+			InAppUpdatePriority: rel.InAppUpdatePriority,
+			CountryTargeting:    countryTargetingToAPI(rel.CountryTargeting),
 		}},
 	}
 
@@ -257,6 +259,61 @@ func (c *Client) UpdateTrack(ctx context.Context, pkg, editID, track string, rel
 		_, err := c.svc.Edits.Tracks.Update(pkg, editID, track, update).Context(ctx).Do()
 		return err
 	})
+}
+
+// TrackEdit reads the current releases of a track inside an edit. It is used
+// by rollout and promote, which modify or copy an existing release instead of
+// uploading a new bundle.
+func (c *Client) TrackEdit(ctx context.Context, pkg, editID, track string) (TrackState, error) {
+	var current *androidpublisher.Track
+
+	err := c.call(ctx, "tracks.get", c.attempts(2), func(ctx context.Context) error {
+		got, err := c.svc.Edits.Tracks.Get(pkg, editID, track).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		current = got
+		return nil
+	})
+	if err != nil {
+		return TrackState{}, err
+	}
+
+	state := TrackState{Track: track, Releases: make([]Release, 0, len(current.Releases))}
+	for _, rel := range current.Releases {
+		state.Releases = append(state.Releases, releaseFromAPI(rel))
+	}
+	return state, nil
+}
+
+func releaseFromAPI(rel *androidpublisher.TrackRelease) Release {
+	out := Release{
+		VersionCodes:        append([]int64(nil), rel.VersionCodes...),
+		Status:              rel.Status,
+		UserFraction:        rel.UserFraction,
+		Name:                rel.Name,
+		InAppUpdatePriority: rel.InAppUpdatePriority,
+	}
+	for _, note := range rel.ReleaseNotes {
+		out.ReleaseNotes = append(out.ReleaseNotes, LocalizedText{Language: note.Language, Text: note.Text})
+	}
+	if rel.CountryTargeting != nil {
+		out.CountryTargeting = &CountryTargeting{
+			Countries:          append([]string(nil), rel.CountryTargeting.Countries...),
+			IncludeRestOfWorld: rel.CountryTargeting.IncludeRestOfWorld,
+		}
+	}
+	return out
+}
+
+func countryTargetingToAPI(targeting *CountryTargeting) *androidpublisher.CountryTargeting {
+	if targeting == nil {
+		return nil
+	}
+	return &androidpublisher.CountryTargeting{
+		Countries:          targeting.Countries,
+		IncludeRestOfWorld: targeting.IncludeRestOfWorld,
+	}
 }
 
 // ValidateEdit validates an edit without committing it.

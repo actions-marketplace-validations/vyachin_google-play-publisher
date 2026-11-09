@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -44,6 +45,9 @@ type PublishOptions struct {
 	ChangesNotSentForReview bool
 	InReviewBehavior        string
 	DryRun                  bool
+	InAppUpdatePriority     int
+	Countries               []string
+	IncludeRestOfWorld      bool
 }
 
 // PublishResult describes a completed publish operation.
@@ -214,11 +218,14 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 	}
 
 	plan, err := release.NewPlan(release.Input{
-		Package: opts.Package,
-		Track:   opts.Track,
-		Status:  opts.Status,
-		Rollout: opts.Rollout,
-		Notes:   notes,
+		Package:             opts.Package,
+		Track:               opts.Track,
+		Status:              opts.Status,
+		Rollout:             opts.Rollout,
+		Notes:               notes,
+		InAppUpdatePriority: opts.InAppUpdatePriority,
+		Countries:           opts.Countries,
+		IncludeRestOfWorld:  opts.IncludeRestOfWorld,
 	})
 	if err != nil {
 		return Prepared{}, err
@@ -244,16 +251,22 @@ func validatePublishOptions(opts PublishOptions) error {
 	if opts.VersionCode < 0 {
 		return exitcode.Errorf(exitcode.Usage, "--version-code must be positive, got %d", opts.VersionCode)
 	}
-	if opts.DryRun && opts.ChangesNotSentForReview {
+	return validateCommitSettings(opts.ChangesNotSentForReview, opts.DryRun, opts.InReviewBehavior)
+}
+
+// validateCommitSettings checks the commit policy flags shared by publish,
+// rollout and promote.
+func validateCommitSettings(changesNotSent, dryRun bool, inReview string) error {
+	if dryRun && changesNotSent {
 		return exitcode.Errorf(exitcode.Usage,
 			"--changes-not-sent-for-review cannot be combined with --dry-run")
 	}
-	switch opts.InReviewBehavior {
+	switch inReview {
 	case "", play.InReviewError, play.InReviewReplace:
 	default:
 		return exitcode.Errorf(exitcode.Usage,
 			"invalid in-review behavior %q: want %q or %q",
-			opts.InReviewBehavior, play.InReviewError, play.InReviewReplace)
+			inReview, play.InReviewError, play.InReviewReplace)
 	}
 	return nil
 }
@@ -352,39 +365,35 @@ func (p *Publisher) PublishPrepared(ctx context.Context, prepared Prepared) (Pub
 	}
 
 	if err := p.api.UpdateTrack(ctx, plan.Package, editID, plan.Track, play.Release{
-		VersionCodes: []int64{bundle.VersionCode},
-		Status:       string(plan.Status),
-		UserFraction: plan.UserFraction,
-		ReleaseNotes: playNotes(plan.Notes),
-		Name:         opts.ReleaseName,
+		VersionCodes:        []int64{bundle.VersionCode},
+		Status:              string(plan.Status),
+		UserFraction:        plan.UserFraction,
+		ReleaseNotes:        playNotes(plan.Notes),
+		Name:                opts.ReleaseName,
+		InAppUpdatePriority: int64(plan.InAppUpdatePriority),
+		CountryTargeting:    releaseTargeting(plan),
 	}); err != nil {
 		return PublishResult{}, err
 	}
 
 	if opts.DryRun {
-		if err := p.api.ValidateEdit(ctx, plan.Package, editID); err != nil {
+		skipCleanup = true // finishDryRun reports its own error; do not try twice.
+		if err := p.finishDryRun(ctx, plan.Package, editID); err != nil {
 			return PublishResult{}, err
 		}
-		skipCleanup = true // Cleanup below reports its own error; do not try twice.
-		if err := p.cleanupEdit(ctx, plan.Package, editID); err != nil {
-			return PublishResult{}, exitcode.WithHint(
-				exitcode.Wrap(exitcode.From(err), fmt.Errorf(
-					"dry run validated but failed to delete edit %s for %s: %w", editID, plan.Package, err)),
-				"the edit was not deleted; retry the publication later — every attempt creates a new edit",
-			)
-		}
-		if errors.Is(ctx.Err(), context.Canceled) {
-			// cleanupEdit kept the edit because a signal arrived after
-			// validation; the dry run did not finish, so do not report success.
-			return PublishResult{}, exitcode.Errorf(exitcode.Interrupted,
-				"operation interrupted: the validated edit %s was kept", editID)
-		}
-		p.logger.Info("dry run validated", "editId", editID)
 		result.Review = ReviewValidated
 		return result, nil
 	}
 
-	outcome := p.commit(ctx, opts, plan, editID, bundle.VersionCode)
+	outcome := p.commit(ctx, commitSettings{
+		ChangesNotSentForReview: opts.ChangesNotSentForReview,
+		InReviewBehavior:        opts.InReviewBehavior,
+	}, commitTarget{
+		Package:      plan.Package,
+		Track:        plan.Track,
+		Status:       plan.Status,
+		VersionCodes: []int64{bundle.VersionCode},
+	}, editID)
 	switch outcome.kind {
 	case commitCommitted:
 		skipCleanup = true
@@ -431,26 +440,42 @@ type commitResult struct {
 // deadline expired. See docs/05-errors.md §4.
 const commitRecoveryBudget = 15 * time.Second
 
+// commitSettings are the edits.commit options shared by every command that
+// mutates a track.
+type commitSettings struct {
+	ChangesNotSentForReview bool
+	InReviewBehavior        string
+}
+
+// commitTarget identifies the track release an edit is expected to apply.
+// Publish, rollout and promote all commit through it, so review reporting and
+// ambiguous-commit reconciliation behave the same for every mutation.
+type commitTarget struct {
+	Package      string
+	Track        string
+	Status       release.Status
+	VersionCodes []int64
+}
+
 // commit applies the edit. Definitive Play rejections are returned unchanged.
 // Every ambiguous attempt is reconciled against the track before the publisher
 // decides what happened, and the reported review outcome comes from the options
 // actually sent plus the observed release lifecycle state.
 func (p *Publisher) commit(
 	ctx context.Context,
-	opts PublishOptions,
-	plan release.Plan,
+	settings commitSettings,
+	target commitTarget,
 	editID string,
-	versionCode int64,
 ) commitResult {
 	commitOpts := play.CommitOptions{
-		ChangesNotSentForReview: opts.ChangesNotSentForReview,
-		InReviewBehavior:        opts.InReviewBehavior,
+		ChangesNotSentForReview: settings.ChangesNotSentForReview,
+		InReviewBehavior:        settings.InReviewBehavior,
 	}
 	manual := false
 	transientRetried := false
 
 	for {
-		commitErr := p.api.CommitEdit(ctx, plan.Package, editID, commitOpts)
+		commitErr := p.api.CommitEdit(ctx, target.Package, editID, commitOpts)
 		if commitErr == nil {
 			return commitResult{kind: commitCommitted, review: reviewOutcome(commitOpts), manual: manual}
 		}
@@ -469,20 +494,20 @@ func (p *Publisher) commit(
 			return commitResult{kind: commitNotCommitted, manual: manual, err: commitErr}
 		}
 
-		released, state, verifyErr := p.reconcileCommit(ctx, plan, versionCode)
+		released, state, verifyErr := p.reconcileCommit(ctx, target)
 		if verifyErr != nil {
 			return commitResult{
 				kind:   commitUnknown,
 				manual: manual,
-				err:    unknownCommitStateError(ctx, plan, editID, versionCode, verifyErr),
+				err:    unknownCommitStateError(ctx, target, editID, verifyErr),
 			}
 		}
 		if released {
 			if state == "" || state == play.LifecycleUnspecified {
 				p.logger.Warn("release state does not confirm the review outcome; reporting it from the commit options",
-					"versionCode", versionCode, "state", state)
+					"versionCodes", target.VersionCodes, "state", state)
 			}
-			review, needsManual := observedReview(plan, commitOpts, state, manual)
+			review, needsManual := observedReview(target, commitOpts, state, manual)
 			return commitResult{kind: commitCommitted, review: review, manual: needsManual}
 		}
 
@@ -513,12 +538,12 @@ func ambiguousCommit(err error) bool {
 // observedReview derives the reported review outcome from the options actually
 // sent and the release lifecycle state seen on the track. A release that exists
 // but was not submitted for review must not be reported as sent.
-func observedReview(plan release.Plan, commitOpts play.CommitOptions, state string, manual bool) (string, bool) {
+func observedReview(target commitTarget, commitOpts play.CommitOptions, state string, manual bool) (string, bool) {
 	review := reviewOutcome(commitOpts)
 	if state != play.LifecycleNotSentForReview || commitOpts.ChangesNotSentForReview {
 		return review, manual
 	}
-	if plan.Status == release.StatusDraft {
+	if target.Status == release.StatusDraft {
 		// The caller explicitly asked for a draft release; nothing else to do.
 		return ReviewNotSent, manual
 	}
@@ -529,14 +554,14 @@ func observedReview(plan release.Plan, commitOpts play.CommitOptions, state stri
 // deadline has already expired, the read runs under a separate short budget so
 // that a lost response can still be recognized. Signal cancellation keeps the
 // interrupted semantics and does not start recovery.
-func (p *Publisher) reconcileCommit(ctx context.Context, plan release.Plan, versionCode int64) (bool, string, error) {
+func (p *Publisher) reconcileCommit(ctx context.Context, target commitTarget) (bool, string, error) {
 	// A signal-canceled run must not perform another request and must keep the
 	// interrupted semantics; the caller reports the state as unknown.
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return false, "", ctx.Err()
 	}
 
-	released, state, err := p.releaseState(ctx, plan, versionCode)
+	released, state, err := p.releaseState(ctx, target)
 	if err == nil || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return released, state, err
 	}
@@ -549,20 +574,22 @@ func (p *Publisher) reconcileCommit(ctx context.Context, plan release.Plan, vers
 	defer cancel()
 	p.logger.Warn("reconciliation after the operation deadline",
 		"error", err, "budget", commitRecoveryBudget.String())
-	return p.releaseState(recoveryCtx, plan, versionCode)
+	return p.releaseState(recoveryCtx, target)
 }
 
-// releaseState reports whether versionCode is on the track and, when it is,
-// the lifecycle state of the release that carries it.
-func (p *Publisher) releaseState(ctx context.Context, plan release.Plan, versionCode int64) (bool, string, error) {
-	releases, err := p.api.TrackReleases(ctx, plan.Package, plan.Track)
+// releaseState reports whether any target version code is on the track and,
+// when it is, the lifecycle state of the release that carries it.
+func (p *Publisher) releaseState(ctx context.Context, target commitTarget) (bool, string, error) {
+	releases, err := p.api.TrackReleases(ctx, target.Package, target.Track)
 	if err != nil {
 		return false, "", err
 	}
 	for _, rel := range releases {
 		for _, code := range rel.VersionCodes {
-			if code == versionCode {
-				return true, rel.State, nil
+			for _, wanted := range target.VersionCodes {
+				if code == wanted {
+					return true, rel.State, nil
+				}
 			}
 		}
 	}
@@ -593,16 +620,28 @@ func IsCommitStateUnknown(err error) bool {
 // the publication failed. The edit is kept because it may already be closed.
 // The operation context is checked as well as the cause: a signal that arrives
 // after a reconciliation failure still has to report 130.
-func unknownCommitStateError(ctx context.Context, plan release.Plan, editID string, versionCode int64, cause error) error {
+func unknownCommitStateError(ctx context.Context, target commitTarget, editID string, cause error) error {
 	code := exitcode.Transient
 	if errors.Is(cause, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 		code = exitcode.Interrupted
 	}
 	err := exitcode.Wrap(code, &commitStateUnknown{cause: fmt.Errorf(
-		"commit state is unknown for %s track %s version %d (edit %s): %w",
-		plan.Package, plan.Track, versionCode, editID, cause)})
+		"commit state is unknown for %s track %s version %s (edit %s): %w",
+		target.Package, target.Track, versionList(target.VersionCodes), editID, cause)})
 	return exitcode.WithHint(err,
 		"the release may be saved; check the track before retrying; the edit was kept")
+}
+
+// versionList formats version codes for messages.
+func versionList(codes []int64) string {
+	if len(codes) == 0 {
+		return "unknown"
+	}
+	parts := make([]string, 0, len(codes))
+	for _, code := range codes {
+		parts = append(parts, strconv.FormatInt(code, 10))
+	}
+	return strings.Join(parts, ",")
 }
 
 func (p *Publisher) alreadyReleased(
@@ -630,6 +669,29 @@ func (p *Publisher) alreadyReleased(
 			"versionCode %d is already on track %s", versionCode, plan.Track),
 		"bump versionCode and rebuild the AAB, or pass --if-exists=skip",
 	)
+}
+
+// finishDryRun validates an edit and deletes it. The caller must skip its own
+// deferred cleanup: the deletion is attempted exactly once here.
+func (p *Publisher) finishDryRun(ctx context.Context, pkg, editID string) error {
+	if err := p.api.ValidateEdit(ctx, pkg, editID); err != nil {
+		return err
+	}
+	if err := p.cleanupEdit(ctx, pkg, editID); err != nil {
+		return exitcode.WithHint(
+			exitcode.Wrap(exitcode.From(err), fmt.Errorf(
+				"dry run validated but failed to delete edit %s for %s: %w", editID, pkg, err)),
+			"the edit was not deleted; retry the publication later — every attempt creates a new edit",
+		)
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		// cleanupEdit kept the edit because a signal arrived after validation;
+		// the dry run did not finish, so do not report success.
+		return exitcode.Errorf(exitcode.Interrupted,
+			"operation interrupted: the validated edit %s was kept", editID)
+	}
+	p.logger.Info("dry run validated", "editId", editID)
+	return nil
 }
 
 // cleanupEdit deletes the edit unless the run was canceled. A signal must not
@@ -709,6 +771,17 @@ func versionReleased(releases []play.ReleaseSummary, versionCode int64) bool {
 		}
 	}
 	return false
+}
+
+// releaseTargeting converts a validated plan into the API targeting type.
+func releaseTargeting(plan release.Plan) *play.CountryTargeting {
+	if len(plan.Countries) == 0 && !plan.IncludeRestOfWorld {
+		return nil
+	}
+	return &play.CountryTargeting{
+		Countries:          plan.Countries,
+		IncludeRestOfWorld: plan.IncludeRestOfWorld,
+	}
 }
 
 func playNotes(notes []release.Note) []play.LocalizedText {
