@@ -31,10 +31,10 @@ inputs:
     required: false
     default: fail
   credentials-base64:
-    description: Base64-encoded service account JSON; mutually exclusive with credentials-file
+    description: 'Alternative: base64-encoded service account JSON; mutually exclusive with credentials-file'
     required: false
   credentials-file:
-    description: Path to a service account JSON key; mutually exclusive with credentials-base64
+    description: 'Preferred: path to a service account JSON key, passed as --credentials; mutually exclusive with credentials-base64'
     required: false
   timeout:
     description: Overall CLI operation timeout

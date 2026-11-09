@@ -61,9 +61,10 @@ After the setup step, use the CLI directly:
     version: 0.0.5
 
 - name: Check access
-  env:
-    GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-  run: google-play-publisher doctor --package "$PACKAGE"
+  run: |
+    google-play-publisher doctor \
+      --package "$PACKAGE" \
+      --credentials "$RUNNER_TEMP/sa.json"
 ```
 
 The setup action does not handle Play credentials; pass them to the CLI step as described in
@@ -76,6 +77,13 @@ wrapper around the CLI: input validation, Play calls, retries and exit codes sta
 `google-play-publisher`.
 
 ```yaml
+- name: Write the service-account key
+  env:
+    SA_JSON: ${{ secrets.GOOGLE_PLAY_SA_JSON }}
+  run: |
+    umask 077
+    printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+
 - uses: vyachin/google-play-publisher@v0.0.5
   with:
     version: 0.0.5
@@ -84,7 +92,7 @@ wrapper around the CLI: input validation, Play calls, retries and exit codes sta
     track: internal
     changelog-dir: android/metadata
     expected-tag: ${{ github.ref_name }}   # tag-triggered workflows only
-    credentials-base64: ${{ secrets.GOOGLE_PLAY_SA_BASE64 }}
+    credentials-file: ${{ runner.temp }}/sa.json
 ```
 
 Inputs:
@@ -100,13 +108,15 @@ Inputs:
 | `release-name` | no | — | Release name; empty lets Play generate it from the AAB version name |
 | `expected-tag` | no | — | Assert the release tag as `v<AAB versionName>`; leave empty for branch runs |
 | `if-exists` | no | `fail` | `fail` or `skip` when the version code is already on the track |
-| `credentials-base64` | no | — | Base64-encoded service-account JSON |
-| `credentials-file` | no | — | Path to a service-account JSON key; relative paths use `GITHUB_WORKSPACE` |
+| `credentials-file` | no | — | **Preferred.** Path to a service-account JSON key, passed to the CLI as `--credentials`; relative paths use `GITHUB_WORKSPACE` |
+| `credentials-base64` | no | — | Alternative: base64-encoded service-account JSON, decoded to a temporary file |
 | `timeout` | no | CLI default | Overall operation timeout |
 | `debug` | no | `false` | Debug logging; secrets are redacted |
 
 `credentials-base64` and `credentials-file` are mutually exclusive. With neither input the
-CLI falls back to Application Default Credentials.
+CLI falls back to Application Default Credentials. Prefer `credentials-file`: it maps
+directly to `google-play-publisher --credentials /path/to/sa.json` and avoids passing the key
+through a second encoding.
 
 Outputs:
 
@@ -194,19 +204,19 @@ jobs:
           printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
 
       - name: Check Play access before publishing
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-        run: google-play-publisher doctor --package com.example.app
+        run: |
+          google-play-publisher doctor \
+            --package com.example.app \
+            --credentials "$RUNNER_TEMP/sa.json"
 
       - name: Publish to internal
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
         run: |
           google-play-publisher publish \
             --aab android/app/build/outputs/bundle/release/app-release.aab \
             --track internal \
             --changelog-dir android/metadata \
             --expected-tag "${{ github.ref_name }}" \
+            --credentials "$RUNNER_TEMP/sa.json" \
             --json > publish.json
 
       - uses: actions/upload-artifact@v4
@@ -251,6 +261,13 @@ jobs:
         working-directory: android
         run: ./gradlew :app:bundleRelease --no-daemon
 
+      - name: Write the service-account key
+        env:
+          SA_JSON: ${{ secrets.GOOGLE_PLAY_SA_JSON }}
+        run: |
+          umask 077
+          printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+
       - name: Publish to internal
         id: play
         uses: vyachin/google-play-publisher@v0.0.5
@@ -261,7 +278,7 @@ jobs:
           track: internal
           changelog-dir: android/metadata
           expected-tag: ${{ github.ref_name }}
-          credentials-base64: ${{ secrets.GOOGLE_PLAY_SA_BASE64 }}
+          credentials-file: ${{ runner.temp }}/sa.json
 
       - name: Show the result
         run: |
@@ -280,18 +297,19 @@ falls back to Application Default Credentials.
 
 | Mode | Input | Notes |
 | --- | --- | --- |
-| Base64 | `credentials-base64` | Create the secret once: `base64 -w0 < sa.json`; do not add a trailing newline |
-| File | `credentials-file` | Relative paths resolve against `GITHUB_WORKSPACE`; the action reads the file and never deletes it |
+| File (preferred) | `credentials-file` | Passed to the CLI as `--credentials /path/to/sa.json`; relative paths resolve against `GITHUB_WORKSPACE`; the action reads the file and never deletes it |
+| Base64 (alternative) | `credentials-base64` | Create the secret once: `base64 -w0 < sa.json`; do not add a trailing newline |
 | ADC | neither input | Set `GOOGLE_APPLICATION_CREDENTIALS` for the step or on the runner |
 
 Base64 credentials are decoded into a `umask 077` file under `$RUNNER_TEMP`, masked in the
 job log, and removed by the step's exit trap. Calling the CLI directly instead:
 
 ```yaml
-- name: Publish with an environment variable
-  env:
-    GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-  run: google-play-publisher publish --aab app-release.aab
+- name: Publish with a credentials file
+  run: |
+    google-play-publisher publish \
+      --aab app-release.aab \
+      --credentials "$RUNNER_TEMP/sa.json"
 ```
 
 Hosted runners destroy `$RUNNER_TEMP` after the job. Self-hosted runners may not: use

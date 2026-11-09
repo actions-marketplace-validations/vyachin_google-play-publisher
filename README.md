@@ -81,19 +81,30 @@ A setup action installs a released CLI and a publish action runs the same comman
 with key decoding, JSON capture and Job Summary:
 
 ```yaml
-- uses: vyachin/google-play-publisher@<release-tag>
+- name: Write the service-account key
+  env:
+    SA_JSON: ${{ secrets.GOOGLE_PLAY_SA_JSON }}
+  run: |
+    umask 077
+    printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+
+- uses: vyachin/google-play-publisher@v0.0.5
   with:
-    version: <cli-version>
+    version: 0.0.5
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
     changelog-dir: android/metadata
-    credentials-base64: ${{ secrets.GOOGLE_PLAY_SA_BASE64 }}
+    credentials-file: ${{ runner.temp }}/sa.json
 ```
 
+`credentials-file` is the preferred mode: the value is passed to the CLI as
+`--credentials /path/to/sa.json`. `credentials-base64` remains available when the secret is
+stored base64-encoded.
+
 See [docs/07-github-actions.md](docs/07-github-actions.md) for both usage patterns, credential
-modes, outputs and troubleshooting. The actions are published with the next release; do not
-use `@main` in production.
+modes, outputs and troubleshooting. The actions are released as v0.0.5; do not use `@main` in
+production.
 
 ## Useful options
 
