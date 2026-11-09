@@ -238,8 +238,8 @@ google-play-publisher pull --package com.example.app --metadata-dir metadata
 | --- | --- | --- | --- |
 | `--package`, `-p` | string | — | `applicationId`; required |
 | `--metadata-dir` | path | — | Target directory; required, must be absent or empty unless `--force` |
-| `--track`, `-t` | string | all tracks | Restrict release notes to this track |
-| `--version-code` | int | every release | Version whose notes are pulled; must resolve to one track |
+| `--track`, `-t` | string | `internal` | Track whose release notes are pulled |
+| `--version-code` | int | every release | Version whose notes are pulled; must be on the track |
 | `--force` | bool | `false` | Replace a non-empty target after the download and validation succeeded |
 
 The generated tree is the exact input format of `publish --metadata-dir`:
@@ -276,14 +276,11 @@ Behaviour:
 - tester groups are pulled for every testing track that has them; a track without testers is
   skipped, and production tracks are not queried because Play accepts testers only for testing
   tracks;
-- release notes cover every track by default; `--track` restricts them to one track. Without
-  `--version-code`, notes from every release on each selected track are written for every
-  version code of that release. With `--version-code`, that version must exist on exactly one
-  selected track and only `<versionCode>.txt` is written; an ambiguous version (present on
-  several tracks) is code 2 with a hint to pass `--track`. A missing `--track`, or a version
-  code absent from the selected tracks, is code 4. A track without releases produces listings
-  and images without changelogs; a release without notes still contributes its version code to
-  `versionCodes` but produces no changelog file;
+- release notes come from `--track`: without `--version-code`, notes from every release on the
+  track are written for every version code of that release; with `--version-code` the selected
+  release must contain that code and only `<versionCode>.txt` is written. A track without
+  releases, or a missing track when no version code was requested, produces listings and images
+  without changelogs; `--version-code` on a missing track is code 4;
 - the download is staged in a hidden sibling directory. The staged tree is parsed by the same
   validator as `publish` before it replaces the target, so an API failure, a malformed listing
   or an invalid image never leaves a partial tree and never touches an existing target;
@@ -514,9 +511,9 @@ Adding a field is backwards-compatible; removing or changing a field requires a 
   "ok": true,
   "command": "pull",
   "package": "com.example.app",
-  "tracks": ["alpha", "beta", "internal", "production"],
+  "track": "internal",
   "metadataDir": "metadata",
-  "versionCodes": [24, 35, 36, 39],
+  "versionCodes": [42],
   "listings": 3,
   "images": 12,
   "changelogs": 3,
@@ -525,9 +522,9 @@ Adding a field is backwards-compatible; removing or changing a field requires a 
 }
 ```
 
-`tracks` lists the tracks whose release notes were selected. `versionCodes` is an array of
-every version code considered (empty when no selected track has releases). `changelogs` counts
-the files written, so a release with two version codes contributes twice.
+`versionCodes` is an array of every version code whose release notes were considered (empty
+when the track has no releases). `changelogs` counts the files written, so a release with two
+version codes contributes twice.
 
 ## 6. Examples
 

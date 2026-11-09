@@ -86,12 +86,8 @@ func TestPullJSON(t *testing.T) {
 	if got["ok"] != true || got["command"] != "pull" || got["package"] != "com.example.app" {
 		t.Fatalf("unexpected output: %v", got)
 	}
-	if got["metadataDir"] != target {
+	if got["metadataDir"] != target || got["track"] != "internal" {
 		t.Fatalf("unexpected output: %v", got)
-	}
-	tracks, ok := got["tracks"].([]any)
-	if !ok || len(tracks) != 1 || tracks[0] != "internal" {
-		t.Fatalf("tracks = %#v", got["tracks"])
 	}
 	if got["listings"] != float64(1) || got["images"] != float64(1) ||
 		got["changelogs"] != float64(1) || got["testers"] != float64(1) {
@@ -124,7 +120,7 @@ func TestPullTextOutput(t *testing.T) {
 		"images: 1",
 		"changelogs: 1",
 		"testers: 1",
-		"tracks: internal (version codes 42)",
+		"track: internal (version codes 42)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output %q does not contain %q", out, want)
@@ -187,56 +183,5 @@ func TestPullAliasDownload(t *testing.T) {
 	_, errOut, code := runWithAPI(t, fake, "download", "-p", "com.example.app", "--metadata-dir", target)
 	if code != int(exitcode.OK) {
 		t.Fatalf("code = %d, want 0: %s", code, errOut)
-	}
-}
-
-func TestPullJSONAllTracks(t *testing.T) {
-	fake := newCLIPullFake(t)
-	fake.AllTracksFunc = func(context.Context, string, string) ([]play.TrackState, error) {
-		return []play.TrackState{
-			{
-				Track: "internal",
-				Releases: []play.Release{{
-					VersionCodes: []int64{42},
-					ReleaseNotes: []play.LocalizedText{{Language: "en-US", Text: "Internal"}},
-				}},
-			},
-			{
-				Track: "beta",
-				Releases: []play.Release{{
-					VersionCodes: []int64{41},
-					ReleaseNotes: []play.LocalizedText{{Language: "en-US", Text: "Beta"}},
-				}},
-			},
-		}, nil
-	}
-	target := filepath.Join(t.TempDir(), "metadata")
-
-	out, errOut, code := runWithAPI(t, fake, "--json", "pull",
-		"-p", "com.example.app", "--metadata-dir", target)
-	if code != int(exitcode.OK) {
-		t.Fatalf("code = %d, want 0: %s", code, errOut)
-	}
-
-	var got map[string]any
-	if err := json.Unmarshal([]byte(out), &got); err != nil {
-		t.Fatalf("output is not JSON: %v (%q)", err, out)
-	}
-	tracks, ok := got["tracks"].([]any)
-	if !ok || len(tracks) != 2 || tracks[0] != "beta" || tracks[1] != "internal" {
-		t.Fatalf("tracks = %#v", got["tracks"])
-	}
-	codes, ok := got["versionCodes"].([]any)
-	if !ok || len(codes) != 2 || codes[0] != float64(41) || codes[1] != float64(42) {
-		t.Fatalf("versionCodes = %#v", got["versionCodes"])
-	}
-	if got["changelogs"] != float64(2) {
-		t.Fatalf("changelogs = %v", got["changelogs"])
-	}
-	for code, want := range map[string]string{"41": "Beta", "42": "Internal"} {
-		data, err := os.ReadFile(filepath.Join(target, "en-US", "changelogs", code+".txt"))
-		if err != nil || strings.TrimSpace(string(data)) != want {
-			t.Fatalf("changelog %s = %q, %v; want %q", code, data, err, want)
-		}
 	}
 }

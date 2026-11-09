@@ -1307,10 +1307,8 @@ be adopted incrementally.
       previous tree survives a failed download.
 - [x] `app.Pull`/`ValidatePullOptions`: local validation before the API client; all listings
       and supported image types; testers for testing tracks only (production answers 400);
-      release notes from every track by default (or only `--track`); without `--version-code`
-      every release on each selected track, with it only the selected version, which must
-      resolve to one track. Notes are written for every version code of each selected release;
-      a release without notes contributes no file.
+      release notes from `--track` (without `--version-code`: every release on the track, with
+      it: only the selected version), written for every version code of each selected release.
 - [x] CLI `pull` (alias `download`) with `--metadata-dir`, `--track`, `--version-code` and
       `--force`; JSON and text results report listings, images, changelogs and testers.
 - [x] Tests: `play` client reads and image downloads (including status mapping and no
