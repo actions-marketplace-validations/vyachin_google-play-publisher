@@ -414,3 +414,94 @@ Gunclub's `android.yml` can install the binary and publish with
 `--changelog-dir metadata --version-code "$VERSION_CODE"`.
 **Gate:** do not commit Gunclub's workflow switch before this release exists; it calls the new
 flags.
+
+## Follow-up code review — 2026-11-09 [unplanned]
+
+Scope: current Go implementation, tests, documentation, and CI/release configuration,
+including the fixes recorded in the earlier review. No production code was changed.
+Five temporary characterization tests reproduced R11–R15 and were removed after review.
+`make fmt`, `make lint`, `make test`, and `make test-race` passed. Race tests required
+running outside the sandbox because its listener restriction blocked httptest.
+Live Play publishing was not exercised; I3 remains open.
+P1 means high priority; P2 means normal priority. Each fix must add regression tests
+and update the matching behavior/error document under `docs/`.
+
+### Confirmed findings
+
+- [ ] **R11 — P1: Redact secrets that cross the debug capture boundary.**
+  Location: [internal/play/transport.go](internal/play/transport.go), `captureBody`,
+  `secretJSON`, and `redact`.
+  Capture truncates the input to 4 KiB + 1 byte before redaction. The regular expression
+  requires a closing quote, so a secret value extending beyond the captured prefix
+  is logged verbatim. Reproduced with a JSON `access_token` containing 5,000 characters:
+  the debug copy contains the token prefix instead of `[redacted]`.
+  Escaped quotes also require proper JSON string handling rather than the current regex.
+  Make redaction safe for incomplete JSON and escaped strings; suppress body logging
+  when safe redaction cannot be established, while preserving replay and memory bounds.
+  Acceptance: secrets beginning before or at the capture limit, long values, escaped
+  quotes, and partial-read payloads never expose any secret value in logs.
+
+- [ ] **R12 — P1: Preserve cancellation and deadlines during token acquisition.**
+  Location: [internal/play/client.go](internal/play/client.go), `New` and `tokenSource`.
+  The production path wraps the context-aware cloud auth provider with
+  `oauth2adapt.TokenSourceFromTokenProvider`. In the pinned adapter, `Token()` invokes
+  the provider with `context.Background()`. `oauth2.NewClient(ctx, ts)` does not restore
+  the request deadline for that call. Reproduced with the same adapter/client pipeline:
+  a request with a 5 ms deadline waits approximately 81 ms for a test token provider,
+  which receives no deadline. A stalled token endpoint can therefore delay timeout
+  handling and shutdown even though ordinary Play requests use the operation context.
+  Use a transport/provider integration that passes the operation context to token
+  acquisition and refresh. Keep the injected API factory and existing error mapping.
+  Acceptance: a blocked fake token endpoint/provider is interrupted by both the
+  operation deadline and cancellation, including refresh; no real credentials required.
+
+- [ ] **R13 — P2: Reject conflicting explicit and metadata version codes before networking.**
+  Location: [internal/app/publish.go](internal/app/publish.go), `Prepare`,
+  `knownVersionCode`, and the existing-version branch in `PublishPrepared`.
+  `Prepare` validates the metadata package but does not compare its version with
+  `PublishOptions.VersionCode`. The explicit value wins during the existing-version
+  check, so metadata version 41 plus `--version-code 42 --if-exists=skip` returns
+  success when 42 is on the track. Without a skip, the contradiction is discovered
+  only after an edit and upload, although it is detectable locally.
+  Acceptance: reject conflicting positive version codes with exit code 2 before
+  API construction, even with `--if-exists=skip`; matching values continue to work.
+
+- [ ] **R14 — P2: Print the required operator action for JSON manual-review outcomes.**
+  Location: [internal/cli/publish.go](internal/cli/publish.go), `reportManualAction`;
+  [internal/cli/root.go](internal/cli/root.go), JSON `renderedError` handling.
+  The automatic save-without-review fallback returns exit code 8 and one success
+  JSON object, but wrapping its error as `renderedError` suppresses the final error
+  and hint on stderr. The INFO log only says that the changes were saved; it does
+  not tell the operator to submit them. This contradicts the explicit stderr action
+  contract in [03-cli-contract.md](docs/03-cli-contract.md#5-json-result).
+  Acceptance: keep exactly one saved-release JSON object and exit code 8, and print
+  the manual submission instruction on stderr exactly once.
+
+- [ ] **R15 — P2: Classify non-timeout connectivity failures consistently.**
+  Location: [internal/play/errors.go](internal/play/errors.go), `mapError`.
+  The transport-error allowlist covers timeout, EOF, reset, and broken pipe but
+  omits connection refusal and unreachable-network/host failures. Reproduced with
+  `net.OpError` wrapping `syscall.ECONNREFUSED`: the result is Internal (1), so the
+  bounded transient retry policy is bypassed and CI receives the wrong category.
+  Acceptance: classify recoverable connectivity failures as Transient (6), add
+  wrapped-error cases and retry coverage, and preserve Auth/Interrupted semantics.
+  Do not indiscriminately retry permanent TLS/certificate or malformed-URL errors.
+
+### Additional improvements
+
+- [ ] **I5 — P2: Enforce shared publish invariants in the app layer.**
+  `Prepare` claims to validate every local input, but policy validation and
+  metadata-based package resolution are partly CLI-only. A direct `Publisher.Publish`
+  caller can pass unsupported `IfExists`/`InReviewBehavior` values or combine
+  `DryRun` with `ChangesNotSentForReview`; `PublishPrepared` also accepts a separate,
+  potentially inconsistent options/prepared pair. Centralize invariants and consider
+  an opaque prepared operation carrying all validated options. Keep CLI parsing
+  focused on collecting input and formatting output. Test direct app callers.
+
+- [ ] **I6 — P2: Propagate human-readable output errors.**
+  The earlier R10 fix propagates doctor JSON failures, but `printPublish`,
+  `printStatus`, and `printChecks` still discard writer errors, including
+  `tabwriter.Flush`. A closed pipe or full output device can leave exit code 0
+  despite a missing result. Return and propagate output errors consistently; keep
+  saved-release context and clearly define precedence over manual-action errors.
+  Add failing-writer tests for text output without rerunning a publication.
