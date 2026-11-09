@@ -1398,14 +1398,20 @@ the extracted binary reports version `0.1.0`, commit `49fba8d` and Go `1.27.3`.
 **DoD:** `v0.1.0` is published with verified archives and checksums, and the documented pins
 point at that release.
 
-## S19. Release v0.1.1 with Marketplace branding — 0.25 d — in progress [unplanned]
+## S19. Release v0.1.1 with Marketplace branding — 0.25 d — done [unplanned]
 
 **Goal:** satisfy the GitHub Marketplace listing form by declaring an icon and color for the
 publish action, and ship them in a tagged release.
 
 - [x] Add `branding` (`upload`, green) to the root `action.yml` and validate the metadata.
 - [x] Add the CHANGELOG section and bump action/CLI pins to `0.1.1`.
-- [ ] Tag `v0.1.1`, verify the release workflow and record evidence.
+- [x] Tag `v0.1.1`, verify the release workflow and record evidence.
+
+**Release evidence 2026-11-09:** [release v0.1.1](https://github.com/vyachin/google-play-publisher/releases/tag/v0.1.1),
+release workflow run 42652688723. The release contains `checksums.txt`, darwin/linux `tar.gz`
+and windows `zip` archives for amd64/arm64. The `darwin_arm64` archive matches
+`checksums.txt` (SHA-256 `b76680e05f20a09edee1d3d4af9b734b799bd70bb42d7925783a7d5c3207d81e`);
+the extracted binary reports version `0.1.1`, commit `462ac6f` and Go `1.27.3`.
 
 **DoD:** `v0.1.1` is published with the branding metadata, and the Marketplace form accepts the
 icon and color.
