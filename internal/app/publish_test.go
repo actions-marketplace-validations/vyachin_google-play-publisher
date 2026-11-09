@@ -844,34 +844,6 @@ func TestPublishUploadsTheInspectedFileHandle(t *testing.T) {
 	}
 }
 
-func TestPrepareValidatesExpectedTag(t *testing.T) {
-	tests := []struct {
-		name        string
-		versionName string
-		tag         string
-		want        exitcode.Code
-	}{
-		{"matching", "1.0.42", "v1.0.42", exitcode.OK},
-		{"without v prefix", "1.0.42", "1.0.42", exitcode.Usage},
-		{"different version", "1.0.42", "v1.0.43", exitcode.Usage},
-		{"missing version name", "", "v1.0.42", exitcode.Usage},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			aab := writeAABWithIdentity(t, "com.example.app", 42, test.versionName)
-			opts := baseOptions(aab)
-			opts.ExpectedTag = test.tag
-
-			prepared, err := app.Prepare(opts)
-			defer func() { _ = prepared.Close() }()
-			if got := exitcode.From(err); got != test.want {
-				t.Fatalf("code = %d, want %d (err: %v)", got, test.want, err)
-			}
-		})
-	}
-}
-
 func TestPublishDefinitiveCommitRejectionIsNotReconciled(t *testing.T) {
 	trackReads := 0
 	fake := &playtest.Fake{

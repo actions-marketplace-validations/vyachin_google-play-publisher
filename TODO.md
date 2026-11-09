@@ -1,9 +1,10 @@
 # TODO — development plan for `google-play-publisher`
 
-**Status:** v0.0.4 released. Stages S1–S8 and S8.1 are done; S0 (Play Console access) was deferred
-by agreement; S9 is post-MVP. S10 (GitHub Actions usability) is implemented and released as
-v0.0.5; the Gunclub workflow switch is an external follow-up and live verification waits for
-S0. The post-S10 review (R16–R19, I7–I9) is analyzed and scheduled as S11.
+**Status:** v0.0.5 released. Stages S1–S8, S8.1, S8.2 and S10 are done; S0 (Play Console
+access) was deferred by agreement; S9 is post-MVP. The post-S10 review (R16–R19, I7–I9) is
+implemented locally as S11, including the removal of `--expected-tag` in S11.8; v0.0.6 is not
+tagged yet. The Gunclub workflow switch is an external follow-up and live verification waits
+for S0.
 **Goal:** a Go CLI that publishes a signed AAB to the Google Play `internal` track, with a
 debug mode, machine-readable output and an extensible command structure.
 
@@ -685,8 +686,8 @@ steps invoke the requested `google-play-publisher` version.
       the CLI; do not duplicate Play API calls or release validation in action scripts.
 - [x] Define validated inputs: CLI version, package, AAB path, track (default `internal`),
       changelog directory, version code, release name, existing-version policy (default
-      `fail`), credentials base64/file, timeout and debug; the expected-tag input is wired in
-      S10.4. Inputs stay strings and are validated in the script; they are passed to the CLI
+      `fail`), credentials base64/file, timeout and debug; the expected-tag input was wired in
+      S10.4 and removed in S11.8. Inputs stay strings and are validated in the script; they are passed to the CLI
       as quoted array elements, never through `eval` or interpolated shell source.
 - [x] Implement [scripts/publish.sh](scripts/publish.sh) as one `run` step with
       `trap ... EXIT`: resolve relative paths against `GITHUB_WORKSPACE` (document that
@@ -739,6 +740,9 @@ parsing `build.gradle.kts` or depending on an AGP intermediate metadata path, an
 bytes are the inspected bytes.
 
 ### S10.4. Validate the expected tag and simplify action inputs — 0.5–1 d — done
+
+> Superseded by S11.8: the owner removed `--expected-tag` and its action input; the AAB
+> `versionName` is still reported in logs and JSON.
 
 - [x] Define the `--expected-tag` contract: exact comparison against `v<versionName>` from the
       AAB, exit code 2 when the tag or `versionName` is missing or mismatched, before API
@@ -812,7 +816,8 @@ release workflow run `42612148749` (success, 2m57s). `checksums.txt` contains
 `230e0e814eb90f792731b71691cd6433f00486b3dca115e5113f2eaf9dfe382b` for
 `google-play-publisher_0.0.5_linux_amd64.tar.gz`; the setup script downloaded and verified that
 archive. The released `darwin_arm64` binary reports version `0.0.5`, commit `83f9ad6`, and
-exposes `--expected-tag` and the AAB-derived `--version-code` help text.
+exposes `--expected-tag` and the AAB-derived `--version-code` help text (the tag flag was
+removed in S11.8).
 
 ### S10 risks
 
@@ -920,8 +925,8 @@ release.
 
 **Status 2026-11-09:** the seven review items were re-checked against the working tree
 (`f2117b4` plus the review notes) and all are confirmed. S11.0–S11.6 are implemented locally
-with regression tests and the local gate is green (82.1% coverage). v0.0.6 is not tagged yet,
-so the release step and the released-version pins remain open.
+with regression tests, and S11.8 removes `--expected-tag` by owner decision; the local gate is
+green. v0.0.6 is not tagged yet, so the release step and the released-version pins remain open.
 
 **Goal:** close the post-S10 review, keep the documented CLI/exit-code contract accurate, and
 ship the fixes as v0.0.6.
@@ -1125,12 +1130,32 @@ survive the step.
 
 **Local evidence 2026-11-09:** `make lint` reports 0 issues (including shellcheck and
 actionlint); `make test` passes with 24/24 setup-script tests and 38/38 publish-script tests;
-`make test-race` is green; `make cover` reports 82.1% total (app 91.2%, play 85.6%, cli 88.5%,
+`make test-race` is green; `make cover` reports 82.0% total (app 91.0%, play 85.6%, cli 88.5%,
 artifact 77.5%), above the 80% gate; `scripts/check_links.py` resolves all 14 documents.
 The v0.0.6 tag and release evidence are pending.
 
 **DoD:** local gate is green, every review item is closed or explicitly blocked (I3), and
 v0.0.6 is released with verified checksums.
+
+### S11.8. Remove `--expected-tag` [unplanned] — 0.25 d — done
+
+Owner decision 2026-11-09: comparing a CI release tag with the AAB `versionName` is not a
+property of the artifact and duplicates a workflow concern. The flag and its action input are
+removed.
+
+- [x] Remove `PublishOptions.ExpectedTag`, the `--expected-tag` flag, the `Prepare` checks and
+      the matching tests.
+- [x] Remove the `expected-tag` action input, the `GPP_EXPECTED_TAG` mapping, the forwarding
+      assertion in the action tests and the documented workflow examples.
+- [x] Update [03-cli-contract.md](docs/03-cli-contract.md),
+      [07-github-actions.md](docs/07-github-actions.md), [README.md](README.md),
+      [ADR-0004](docs/adr/0004-github-actions.md) (superseded note), the goreleaser release
+      header and the v0.0.6 CHANGELOG.
+- [x] Keep `versionName` in logs and the JSON result; only the tag assertion is gone.
+
+**DoD:** no code, script, action or current behavior document advertises `expected-tag`; the
+ADR, CHANGELOG and TODO keep only historical or removal notes. The local gate is green, and
+`versionName` stays available for release naming and traceability.
 
 ### S11 order and estimates
 

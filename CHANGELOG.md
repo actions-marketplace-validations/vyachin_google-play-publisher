@@ -30,6 +30,11 @@
 - `doctor --aab` now requires a readable `base/manifest/AndroidManifest.xml`, matching
   publish. Bundles without it were never valid release artifacts.
 
+### Removed
+
+- `--expected-tag` and the `expected-tag` publish-action input. Tag validation belongs to the
+  CI workflow; the AAB `versionName` is still reported in logs and the JSON result.
+
 ## v0.0.5 — 2026-11-09
 
 ### Added

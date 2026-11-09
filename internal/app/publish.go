@@ -39,7 +39,6 @@ type PublishOptions struct {
 	RolloutSet              bool
 	Notes                   map[string]string
 	ReleaseName             string
-	ExpectedTag             string
 	IfExists                release.ExistsPolicy
 	ChangesNotSentForReview bool
 	InReviewBehavior        string
@@ -194,27 +193,12 @@ func Prepare(opts PublishOptions) (Prepared, error) {
 		}
 	}()
 
-	identity := bundle.Identity
-	resolved, err := validateIdentity(identity, opts.Package, opts.VersionCode, meta)
+	resolved, err := validateIdentity(bundle.Identity, opts.Package, opts.VersionCode, meta)
 	if err != nil {
 		return Prepared{}, err
 	}
 	opts.Package = resolved.Package
 	opts.VersionCode = resolved.VersionCode
-
-	if opts.ExpectedTag != "" {
-		if identity.VersionName == "" {
-			return Prepared{}, exitcode.Errorf(exitcode.Usage,
-				"--expected-tag %q cannot be checked: the AAB manifest has no android:versionName",
-				opts.ExpectedTag)
-		}
-		want := "v" + identity.VersionName
-		if opts.ExpectedTag != want {
-			return Prepared{}, exitcode.Errorf(exitcode.Usage,
-				"--expected-tag %q does not match AAB versionName %q (want %q)",
-				opts.ExpectedTag, identity.VersionName, want)
-		}
-	}
 
 	if opts.ChangelogDir != "" && len(opts.Notes) > 0 {
 		return Prepared{}, exitcode.Errorf(exitcode.Usage,

@@ -73,7 +73,6 @@ jobs:
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
           changelog-dir: android/metadata
-          expected-tag: v1.0.42
 
       - name: Assert the action outputs
         run: |

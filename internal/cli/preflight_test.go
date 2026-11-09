@@ -41,9 +41,6 @@ func TestPublishLocalValidationBeforeClient(t *testing.T) {
 		{"version code does not match AAB", []string{
 			"publish", "-p", "com.example.app", "-f", aab, "--version-code", "41",
 		}},
-		{"expected tag does not match", []string{
-			"publish", "-p", "com.example.app", "-f", aab, "--expected-tag", "v1.0.43",
-		}},
 		{"metadata mismatch", []string{
 			"publish", "-p", "com.example.other", "-f", aab, "--metadata", writeMetadata(t, 42),
 		}},

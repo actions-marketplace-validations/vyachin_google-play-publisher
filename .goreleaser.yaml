@@ -38,8 +38,7 @@ checksum:
 
 release:
   header: |
-    **Added:** release identity read from the AAB, optional `--version-code`, `--expected-tag`,
-    and GitHub Actions setup/publish actions. See CHANGELOG for details.
+    See CHANGELOG.md for the features and fixes in this release.
 
 changelog:
   sort: asc

@@ -102,6 +102,10 @@ Rules:
 - `--expected-tag` compares exactly with `v<versionName>`; a missing version name or a
   mismatch is exit code 2 before any API call.
 
+> Superseded 2026-11-09: the owner removed `--expected-tag` and the `expected-tag` action
+> input. A release tag is a CI concern, not a property of the AAB. The AAB `versionName` is
+> still reported in logs and the JSON result.
+
 ### D5 — Artifact identity
 
 `Prepare` opens the AAB once, computes size and SHA-256 from the open file, parses the

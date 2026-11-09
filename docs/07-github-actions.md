@@ -91,7 +91,6 @@ wrapper around the CLI: input validation, Play calls, retries and exit codes sta
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal
     changelog-dir: android/metadata
-    expected-tag: ${{ github.ref_name }}   # tag-triggered workflows only
     credentials-file: ${{ runner.temp }}/sa.json
 ```
 
@@ -106,7 +105,6 @@ Inputs:
 | `changelog-dir` | no | — | Play-style metadata directory with `<locale>/changelogs/<versionCode>.txt` |
 | `version-code` | no | AAB | Optional assertion checked against the AAB and upload; used for changelog lookup |
 | `release-name` | no | — | Release name; empty lets Play generate it from the AAB version name |
-| `expected-tag` | no | — | Assert the release tag as `v<AAB versionName>`; leave empty for branch runs |
 | `if-exists` | no | `fail` | `fail` or `skip` when the version code is already on the track |
 | `credentials-file` | no | — | **Preferred.** Path to a service-account JSON key, passed to the CLI as `--credentials`; relative paths use `GITHUB_WORKSPACE` |
 | `credentials-base64` | no | — | Alternative: base64-encoded service-account JSON, decoded to a temporary file |
@@ -137,8 +135,6 @@ Behavior:
 - inputs are passed as quoted CLI arguments, never interpolated into shell source;
 - the AAB manifest supplies `package` and `versionCode`; `package` and `version-code` remain
   optional assertions, and `changelog-dir` uses the AAB version code;
-- `expected-tag` fails with exit code 2 before any upload when it differs from
-  `v<versionName>`; use it only in tag-triggered workflows;
 - base64 credentials are decoded into a `umask 077` temporary file under `$RUNNER_TEMP`,
   masked in the log, and removed after success or failure;
 - the CLI runs once with `--json`; stderr is forwarded to the job log, the JSON result is
@@ -215,7 +211,6 @@ jobs:
             --aab android/app/build/outputs/bundle/release/app-release.aab \
             --track internal \
             --changelog-dir android/metadata \
-            --expected-tag "${{ github.ref_name }}" \
             --credentials "$RUNNER_TEMP/sa.json" \
             --json > publish.json
 
@@ -277,7 +272,6 @@ jobs:
           aab: android/app/build/outputs/bundle/release/app-release.aab
           track: internal
           changelog-dir: android/metadata
-          expected-tag: ${{ github.ref_name }}
           credentials-file: ${{ runner.temp }}/sa.json
 
       - name: Show the result

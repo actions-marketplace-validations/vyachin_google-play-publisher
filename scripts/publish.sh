@@ -33,7 +33,6 @@ debug="${GPP_DEBUG:-false}"
 changelog_dir="${GPP_CHANGELOG_DIR:-}"
 version_code="${GPP_VERSION_CODE:-}"
 release_name="${GPP_RELEASE_NAME:-}"
-expected_tag="${GPP_EXPECTED_TAG:-}"
 
 [ -n "$package" ] || die "package input is required"
 [ -n "$aab" ] || die "aab input is required"
@@ -115,9 +114,6 @@ if [ -n "$version_code" ]; then
 fi
 if [ -n "$release_name" ]; then
 	args+=(--release-name "$release_name")
-fi
-if [ -n "$expected_tag" ]; then
-	args+=(--expected-tag "$expected_tag")
 fi
 if [ -n "$if_exists" ]; then
 	args+=(--if-exists "$if_exists")
