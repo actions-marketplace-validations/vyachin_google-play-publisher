@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.0.2 — unreleased
+## v0.0.2 — 2026-11-09
 
 **Breaking:** `--release-notes` is removed. Release notes now come from `--changelog-dir`
 (the Play/fastlane layout `<locale>/changelogs/<versionCode>.txt`) and require

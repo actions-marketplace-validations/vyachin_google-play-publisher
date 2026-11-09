@@ -36,6 +36,11 @@ archives:
 checksum:
   name_template: checksums.txt
 
+release:
+  header: |
+    **Breaking:** `--release-notes` is removed. Release notes now come from
+    `--changelog-dir` (the Play/fastlane layout) and require `--version-code`.
+
 changelog:
   sort: asc
   filters:
