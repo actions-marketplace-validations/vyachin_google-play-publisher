@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -186,5 +189,32 @@ func TestClientRetriesCreateEdit(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("requests = %d, want 2", requests)
+	}
+}
+
+func TestCallRetriesConnectionRefused(t *testing.T) {
+	var sleeps []time.Duration
+	client := newRetryTestClient(5, recordSleeps(&sleeps))
+
+	calls := 0
+	err := client.call(context.Background(), "test", 5, func(context.Context) error {
+		calls++
+		if calls < 3 {
+			return &net.OpError{
+				Op:  "dial",
+				Net: "tcp",
+				Err: os.NewSyscallError("connect", syscall.ECONNREFUSED),
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("calls = %d, want 3", calls)
+	}
+	if len(sleeps) != 2 {
+		t.Fatalf("sleeps = %v, want 2", sleeps)
 	}
 }

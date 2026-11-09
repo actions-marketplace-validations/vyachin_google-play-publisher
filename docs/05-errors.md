@@ -27,16 +27,18 @@ Message text is only a fallback and is matched by stable fragments, because Play
 wording.
 
 Transport failures arrive as plain `net`/`url` errors, not `googleapi.Error`:
-`context.DeadlineExceeded`, `io.EOF`, `io.ErrUnexpectedEOF`, `ECONNRESET` and network
-timeouts map to exit code 6; `context.Canceled` maps to 130. Token retrieval failures arrive
-as `*oauth2.RetrieveError`: a 4xx answer from the token endpoint is an authentication
-problem (3), a network failure or 5xx answer is transient (6).
+`context.DeadlineExceeded`, `io.EOF`, `io.ErrUnexpectedEOF`, `ECONNRESET`, `ECONNREFUSED`,
+`EHOSTUNREACH`, `ENETUNREACH` and network timeouts map to exit code 6; `context.Canceled`
+maps to 130. Permanent TLS/certificate failures and malformed URLs stay internal (1) and are
+not retried. Token retrieval failures arrive as `*oauth2.RetrieveError`: a 4xx answer from
+the token endpoint is an authentication problem (3), a network failure or 5xx answer is
+transient (6).
 
 ## 2. Error catalog
 
 | HTTP | Marker | Cause | Exit code | Retry | Action |
 | --- | --- | --- | --- | --- | --- |
-| — | `context.DeadlineExceeded`, `io.EOF`, `ECONNRESET` | Network/timeout | 6 | Yes | Rerun |
+| — | `context.DeadlineExceeded`, `io.EOF`, `ECONNRESET`, `ECONNREFUSED`, `EHOSTUNREACH`, `ENETUNREACH` | Network/timeout | 6 | Yes | Rerun |
 | — | `context.Canceled` | Interrupted by a signal | 130 | No | Rerun |
 | — | `*oauth2.RetrieveError` with 4xx | Token endpoint rejected the credentials | 3 | No | Check the key, its scopes and the account |
 | — | `*oauth2.RetrieveError` without a response, or 5xx | Token endpoint unreachable | 6 | Yes | Rerun |

@@ -477,7 +477,7 @@ and update the matching behavior/error document under `docs/`.
   Acceptance: keep exactly one saved-release JSON object and exit code 8, and print
   the manual submission instruction on stderr exactly once.
 
-- [ ] **R15 — P2: Classify non-timeout connectivity failures consistently.**
+- [x] **R15 — P2: Classify non-timeout connectivity failures consistently.**
   Location: [internal/play/errors.go](internal/play/errors.go), `mapError`.
   The transport-error allowlist covers timeout, EOF, reset, and broken pipe but
   omits connection refusal and unreachable-network/host failures. Reproduced with

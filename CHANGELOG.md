@@ -6,6 +6,8 @@
 
 - `--json` for a release saved without review (exit code 8) prints the required Play Console
   action on `stderr` while keeping exactly one success object on `stdout`.
+- Connection-refused and unreachable-host/network failures are classified as transient (6)
+  and retried instead of being reported as internal (1).
 
 ## v0.0.2 — 2026-11-09
 

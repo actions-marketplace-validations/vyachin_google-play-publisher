@@ -2,12 +2,14 @@ package play
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"syscall"
 	"testing"
 
@@ -35,8 +37,14 @@ func TestMapErrorNetworkAndTimeout(t *testing.T) {
 		{"eof", io.EOF, exitcode.Transient},
 		{"unexpected eof", io.ErrUnexpectedEOF, exitcode.Transient},
 		{"connection reset", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}, exitcode.Transient},
+		{"connection refused", &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}, exitcode.Transient},
+		{"wrapped connection refused", &url.Error{Op: "Get", URL: "https://example.com", Err: &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}}, exitcode.Transient},
+		{"host unreachable", &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)}, exitcode.Transient},
+		{"network unreachable", &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ENETUNREACH)}, exitcode.Transient},
 		{"timeout", &net.OpError{Op: "dial", Net: "tcp", Err: timeoutError{}}, exitcode.Transient},
 		{"canceled", context.Canceled, exitcode.Interrupted},
+		{"certificate", &url.Error{Op: "Get", URL: "https://example.com", Err: x509.UnknownAuthorityError{}}, exitcode.Internal},
+		{"malformed url", &url.Error{Op: "Get", URL: "http://[::1", Err: errors.New("missing ']' in host")}, exitcode.Internal},
 		{"unknown", errors.New("boom"), exitcode.Internal},
 	}
 

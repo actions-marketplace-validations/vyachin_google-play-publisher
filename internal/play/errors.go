@@ -66,6 +66,9 @@ func mapError(err error) error {
 		errors.Is(err, io.EOF),
 		errors.Is(err, io.ErrUnexpectedEOF),
 		errors.Is(err, syscall.ECONNRESET),
+		errors.Is(err, syscall.ECONNREFUSED),
+		errors.Is(err, syscall.EHOSTUNREACH),
+		errors.Is(err, syscall.ENETUNREACH),
 		errors.Is(err, syscall.EPIPE),
 		isTimeout(err):
 		return exitcode.WithHint(exitcode.Wrap(exitcode.Transient, err), hintFor(exitcode.Transient))
