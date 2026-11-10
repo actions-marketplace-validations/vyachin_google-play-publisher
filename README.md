@@ -28,7 +28,20 @@ Download a binary for Linux, macOS or Windows (amd64 or arm64) from
 [GitHub Releases](https://github.com/vyachin/google-play-publisher/releases/latest), verify
 its archive against `checksums.txt`, and put `google-play-publisher` on your `PATH`.
 
-To install from source with Go:
+To install from source with Go, install the released module directly:
+
+```bash
+go install github.com/vyachin/google-play-publisher/cmd/google-play-publisher@latest
+```
+
+Pin a version with `@v0.1.1` instead of `@latest`. `go install` takes a package import path,
+not a URL, and the `@version` suffix is required: `go install https://github.com/...` fails with
+`malformed import path` because of the `:`. A binary installed this way reports `dev` as its
+version, because commit and build metadata are injected by GoReleaser into release archives.
+The binary lands in `$(go env GOBIN)`, or in `$(go env GOPATH)/bin` when `GOBIN` is unset; add
+that directory to `PATH` if `google-play-publisher` is not found.
+
+To build from a local checkout instead:
 
 ```bash
 git clone https://github.com/vyachin/google-play-publisher.git
