@@ -34,7 +34,7 @@ To install from source with Go, install the released module directly:
 go install github.com/vyachin/google-play-publisher/cmd/google-play-publisher@latest
 ```
 
-Pin a version with `@v0.1.1` instead of `@latest`. `go install` takes a package import path,
+Pin a version with `@v0.1.2` instead of `@latest`. `go install` takes a package import path,
 not a URL, and the `@version` suffix is required: `go install https://github.com/...` fails with
 `malformed import path` because of the `:`. A binary installed this way reports `dev` as its
 version, because commit and build metadata are injected by GoReleaser into release archives.
@@ -165,9 +165,9 @@ writes a job summary. Add these steps after your bundle build on a Linux runner:
     umask 077
     printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
 
-- uses: vyachin/google-play-publisher@v0.1.1
+- uses: vyachin/google-play-publisher@v0.1.2
   with:
-    version: 0.1.1
+    version: 0.1.2
     package: com.example.app
     aab: android/app/build/outputs/bundle/release/app-release.aab
     track: internal

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.2 — 2026-11-12
+
+### Changed
+
+- `golang.org/x/oauth2` is updated from 0.37.0 to 0.38.0.
+- The README leads with the publishing use cases and explains how to install the released
+  module with `go install`, including the `@v0.1.2` pin and the `dev` version it reports.
+
 ## v0.1.1 — 2026-11-09
 
 ### Added
