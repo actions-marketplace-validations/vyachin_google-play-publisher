@@ -2,7 +2,7 @@ name: Setup google-play-publisher
 description: Install a released google-play-publisher CLI archive and add it to PATH
 inputs:
   version:
-    description: 'Released CLI version, for example 0.1.1 or v0.1.1'
+    description: 'Released CLI version, for example 0.1.2 or v0.1.2'
     required: true
 outputs:
   version:
