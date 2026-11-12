@@ -1418,13 +1418,19 @@ the extracted binary reports version `0.1.1`, commit `462ac6f` and Go `1.27.3`.
 **DoD:** `v0.1.1` is published with the branding metadata, and the Marketplace form accepts the
 icon and color.
 
-## S20. Maintenance release v0.1.2 — 0.25 d — in progress [unplanned]
+## S20. Maintenance release v0.1.2 — 0.25 d — done [unplanned]
 
 **Goal:** ship the Dependabot `golang.org/x/oauth2` bump and the restructured README in a
 tagged maintenance release, with the documented action and CLI pins moved to it.
 
 - [x] Add the v0.1.2 CHANGELOG section and bump the documented action/CLI pins to `0.1.2`.
-- [ ] Tag `v0.1.2`, verify the release workflow and record evidence.
+- [x] Tag `v0.1.2`, verify the release workflow and record evidence.
+
+**Release evidence 2026-11-12:** [release v0.1.2](https://github.com/vyachin/google-play-publisher/releases/tag/v0.1.2),
+release workflow run 43191867941. The release contains `checksums.txt`, darwin/linux `tar.gz`
+and windows `zip` archives for amd64/arm64. The `darwin_arm64` archive matches
+`checksums.txt` (SHA-256 `f271acc559c8180cb442eeaa58cd1172b03e9c07b5ce520c9b95fb613b2f2ab5`);
+the extracted binary reports version `0.1.2`, commit `a1ced95` and Go `1.27.3`.
 
 **DoD:** `v0.1.2` is published with verified archives and checksums, and the documented pins
 point at that release.
