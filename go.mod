@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/auth v0.24.4
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/oauth2 v0.38.0
-	google.golang.org/api v0.314.0
+	google.golang.org/api v0.316.0
 	google.golang.org/protobuf v1.36.12
 )
 
